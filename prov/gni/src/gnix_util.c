@@ -64,6 +64,10 @@
 #include "gnix.h"
 #include "gnix_util.h"
 
+#ifdef  TIMESTAMP_INSTRUMENTATION
+#include <math.h>
+#endif
+
 static bool app_init;
 /* Filled in by __gnix_app_init */
 static uint8_t gnix_app_ptag;
@@ -797,3 +801,719 @@ int _gnix_get_num_corespec_cpus(uint32_t *num_core_spec_cpus)
 	return ret;
 }
 
+#ifdef  TIMESTAMP_INSTRUMENTATION
+
+static const char *test_name_fragment;
+static const char *set_name_fragment;
+
+time_delta_t *trace_send_array[TRACE_SEND_OP_MAX];
+uint32_t trace_send_count[TRACE_SEND_OP_MAX];
+
+time_delta_t *trace_recv_array[TRACE_RECV_OP_MAX];
+uint32_t trace_recv_count[TRACE_RECV_OP_MAX];
+
+time_delta_t *trace_read_array[TRACE_READ_OP_MAX];
+uint32_t trace_read_count[TRACE_READ_OP_MAX];
+
+time_delta_t *trace_write_array[TRACE_WRITE_OP_MAX];
+uint32_t trace_write_count[TRACE_WRITE_OP_MAX];
+
+typedef struct {
+    int     eval;
+    char    *name;
+} name_map_t;
+
+static
+name_map_t send_enum_to_name[] = {
+    {TRACE_SEND_FI_SENDMSG, "FI_SENDMSG"},
+    {TRACE_SEND_REQ_QUEUED, "REQ_QUEUED"},
+    {TRACE_SEND_UGNI_SENT, "UGNI_SENT"},
+    {TRACE_SEND_APP_RETURN, "APP_RETURN"},
+    {TRACE_SEND_CQE_RECVD, "CQE_RECVD"},
+    {TRACE_SEND_B_ADD_EVENT, "B_ADD_EVENT"},
+    {TRACE_SEND_A_EVT_QUEUED, "A_EVT_QUEUED"},
+    {TRACE_SEND_A_OBJ_SIGNAL, "A_OBJ_SIGNAL"},
+    {TRACE_SEND_APP_REENTRY, "APP_REENTRY"},
+    {TRACE_SEND_UGNI_EXIT, "UGNI_EXIT"},
+    {-1, "unknown"},
+};
+
+static
+name_map_t recv_enum_to_name[] = {
+    {TRACE_RECV_SMSG_ENTRY, "SMSG_ENTRY"},
+    {TRACE_RECV_A_MATCH_TAG, "A_MATCH_TAG"},
+    {TRACE_RECV_B_MEMCPY, "B_MEMCPY"},
+    {TRACE_RECV_A_MEMCPY, "A_MEMCPY"},
+    {TRACE_RECV_A_EVT_QUEUED, "A_EVT_QUEUED"},
+    {TRACE_RECV_A_OBJ_SIGNAL, "A_OBJ_SIGNAL"},
+    {TRACE_RECV_APP_REENTRY, "APP_REENTRY"},
+    {TRACE_RECV_UGNI_EXIT, "UGNI_EXIT"},
+    {-1, "unknown"},
+};
+
+static
+name_map_t read_enum_to_name[] = {
+    {TRACE_READ_FI_READMSG, "FI_READMSG"},
+    {TRACE_READ_REQ_QUEUED, "REQ_QUEUED"},
+    {TRACE_READ_UGNI_SENT, "UGNI_SENT"},
+    {TRACE_READ_APP_RETURN, "APP_RETURN"},
+    {TRACE_READ_CQE_RECVD, "CQE_RECVD"},
+    {TRACE_READ_B_ADD_EVENT, "B_ADD_EVENT"},
+    {TRACE_READ_A_EVT_QUEUED, "A_EVT_QUEUED"},
+    {TRACE_READ_A_OBJ_SIGNAL, "A_OBJ_SIGNAL"},
+    {TRACE_READ_APP_REENTRY, "APP_REENTRY"},
+    {TRACE_READ_UGNI_EXIT, "UGNI_EXIT"},
+    {-1, "unknown"},
+};
+
+static
+name_map_t write_enum_to_name[] = {
+    {TRACE_WRITE_FI_WRITEMSG, "FI_WRITEMSG"},
+    {TRACE_WRITE_REQ_QUEUED, "REQ_QUEUED"},
+    {TRACE_WRITE_UGNI_SENT, "UGNI_SENT"},
+    {TRACE_WRITE_APP_RETURN, "APP_RETURN"},
+    {TRACE_WRITE_CQE_RECVD, "CQE_RECVD"},
+    {TRACE_WRITE_B_ADD_EVENT, "B_ADD_EVENT"},
+    {TRACE_WRITE_A_EVT_QUEUED, "A_EVT_QUEUED"},
+    {TRACE_WRITE_A_OBJ_SIGNAL, "A_OBJ_SIGNAL"},
+    {TRACE_WRITE_APP_REENTRY, "APP_REENTRY"},
+    {TRACE_WRITE_UGNI_EXIT, "UGNI_EXIT"},
+    {-1, "unknown"},
+};
+
+static
+const char *find_name(name_map_t *map, int e_value)
+{
+    int i;
+
+    for (i = 0; map[i].eval != -1; i++) {
+        if (map[i].eval == e_value)
+            return map[i].name;
+    }
+    return map[i].name;
+}
+
+void
+gnix_allocate_trace_buffers(const char *test_name, const char *set_name,
+        uint32_t iterations)
+{
+    int op;
+
+    /* Just in case there already is an allocation, release it. */
+
+    gnix_deallocate_trace_buffers();
+
+    test_name_fragment = test_name;
+    set_name_fragment = set_name;
+
+    /* Allocate space to collect data points for the desired number of
+     * iterations.
+     */
+
+    if (iterations) {
+        for (op = 0; op < TRACE_SEND_OP_MAX; op++) {
+            trace_send_array[op] = (time_delta_t *)
+                calloc(TRACE_SEND_POINT_MAX * iterations, sizeof(time_delta_t));
+            trace_send_count[op] = iterations;
+        }
+
+        for (op = 0; op < TRACE_RECV_OP_MAX; op++) {
+            trace_recv_array[op] = (time_delta_t *)
+                calloc(TRACE_RECV_POINT_MAX * iterations, sizeof(time_delta_t));
+            trace_recv_count[op] = iterations;
+        }
+
+        for (op = 0; op < TRACE_READ_OP_MAX; op++) {
+            trace_read_array[op] = (time_delta_t *)
+                calloc(TRACE_READ_POINT_MAX * iterations, sizeof(time_delta_t));
+            trace_read_count[op] = iterations;
+        }
+
+        for (op = 0; op < TRACE_WRITE_OP_MAX; op++) {
+            trace_write_array[op] = (time_delta_t *)
+                calloc(TRACE_WRITE_POINT_MAX * iterations, sizeof(time_delta_t));
+            trace_write_count[op] = iterations;
+        }
+    }
+}
+
+void
+gnix_deallocate_trace_buffers()
+{
+    int op;
+
+    test_name_fragment = NULL;
+    set_name_fragment = NULL;
+
+    /* Stop new attempts to store values to an existing point ID. */
+
+    for (op = 0; op < TRACE_SEND_OP_MAX; op++) {
+        if (trace_send_array[op]) {
+            free(trace_send_array[op]);
+            trace_send_array[op] = NULL;
+        }
+        trace_send_count[op] = 0;
+    }
+
+
+    for (op = 0; op < TRACE_RECV_OP_MAX; op++) {
+        if (trace_recv_array[op]) {
+            free(trace_recv_array[op]);
+            trace_recv_array[op] = NULL;
+        }
+        trace_recv_count[op] = 0;
+    }
+
+    for (op = 0; op < TRACE_READ_OP_MAX; op++) {
+        if (trace_read_array[op]) {
+            free(trace_read_array[op]);
+            trace_read_array[op] = NULL;
+        }
+        trace_read_count[op] = 0;
+    }
+
+    for (op = 0; op < TRACE_WRITE_OP_MAX; op++) {
+        if (trace_write_array[op]) {
+            free(trace_write_array[op]);
+            trace_write_array[op] = NULL;
+        }
+        trace_write_count[op] = 0;
+    }
+}
+
+typedef struct  {
+    char    *flow_name_fragment;
+    name_map_t *enum_to_name;
+    time_delta_t **matrix;
+    uint32_t    *op_iterations;
+    uint32_t    max_points;
+} flow_attr_t;
+
+flow_attr_t send_attr = {
+    "Send",
+    send_enum_to_name,
+    &trace_send_array,
+    trace_send_count,
+    TRACE_SEND_POINT_MAX,
+};
+
+flow_attr_t recv_attr = {
+    "Recv",
+    recv_enum_to_name,
+    &trace_recv_array,
+    trace_recv_count,
+    TRACE_RECV_POINT_MAX,
+};
+
+flow_attr_t read_attr = {
+    "Read",
+    read_enum_to_name,
+    &trace_read_array,
+    trace_read_count,
+    TRACE_READ_POINT_MAX,
+};
+
+flow_attr_t write_attr = {
+    "Write",
+    write_enum_to_name,
+    &trace_write_array,
+    trace_write_count,
+    TRACE_WRITE_POINT_MAX,
+};
+
+uint64_t
+get_value(flow_attr_t *flow_attr, uint32_t op, uint32_t point,
+        uint32_t iteration, bool start)
+{
+    return get_trace_value(flow_attr->matrix[op],
+            flow_attr->max_points, point, iteration, start);
+}
+
+void
+set_value(flow_attr_t *flow_attr, uint32_t point, uint32_t iteration,
+        uint32_t op, bool start, uint64_t value)
+{
+    set_trace_value(flow_attr->matrix[op],
+            flow_attr->max_points, point, iteration, start, value);
+}
+
+static void
+gnix_print_trace_flow_abs(flow_attr_t *flow_attr, uint32_t op)
+{
+    int     column_widths[flow_attr->max_points];
+    char    pbuf[1024];
+    char    flow_name[128];
+    FILE    *outf;
+    char    *strptr;
+    uint64_t value, time_base;
+    uint32_t i, j;
+
+    /* If there are no trace points for this operation, return without printing
+     * anything.
+     */
+
+    if (flow_attr->op_iterations[op] == 0) {
+        return;
+    }
+    value = get_value(flow_attr, op, /* point */ 0, /* iteration */ 0,
+                /* start */ true);
+    if (value == 0) {
+        return;
+    }
+
+    /* Compute the unique name to describe this flow. */
+
+    sprintf(flow_name, "%s_%s_%s_%d_abs", test_name_fragment, set_name_fragment,
+            flow_attr->flow_name_fragment, op);
+
+    if ((outf = fopen(flow_name, "w")) == NULL) {
+        fprintf(stderr, "fopen of file %s failed, errno %d\n",
+                flow_name, errno);
+        exit(1);
+    }
+
+
+    uint32_t iterations = flow_attr->op_iterations[op];
+
+    /* Work out the width of each column using the header names, allowing for
+     * the fact that column 1 is wider because it is a full nanosecond
+     * timestamp, not a delta. The deltas are assumed to always be shorter than
+     * the names.
+     */
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+        column_widths[j] = strlen(find_name(flow_attr->enum_to_name, j));
+
+        if (j == 0 && column_widths[j] < 17) {
+            column_widths[j] = 17;
+        }
+    }
+
+    /* Print the header line.  The column headers are the names of each of the
+     * trace points.
+     */
+
+    fprintf(outf, "\n\n%s\n\n", flow_name);
+
+    strptr = pbuf;
+    sprintf(pbuf, "entry    ");
+    strptr += strlen(strptr);
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+        sprintf(strptr, "  %*s", column_widths[j], find_name(flow_attr->enum_to_name, j));
+        strptr += strlen(strptr);
+    }
+    fprintf(outf, "%s\n", pbuf);
+
+    /* Print out each point as a delta against the start time of its iteration.
+     */
+
+    for (i = 0; i < iterations; i++) {
+        time_base = get_value(flow_attr, op, /* point */ 0, /* iteration */ i,
+                /* start */ true);
+        if (time_base == 0) {
+            break;          // test ended early
+        }
+
+        strptr = pbuf;
+        sprintf(strptr, "%5d    ", i);
+        strptr += strlen(strptr);
+
+        for (j = 0; j < flow_attr->max_points; j++) {
+            if (j == 0) {
+                value = time_base;
+            } else {
+                value = get_value(flow_attr, op, /* point */ j,
+                        /* iteration */ i, /* start */ false);
+                if (value) {
+                    value -= time_base;
+                }
+            }
+            sprintf(strptr, "  %*.3f", column_widths[j], (double)value / 1000.0);
+            strptr += strlen(strptr);
+        }
+        fprintf(outf, "%s\n", pbuf);
+    }
+    fprintf(outf, "\n\n");
+
+    fclose(outf);
+}
+
+typedef struct {
+    uint32_t     outliers;
+    double       min;
+    double       max;
+    double       mean;
+    double       median;
+    double       stddev;
+} stat_array_t;
+
+static int
+sort_uint64(const void *p1, const void *p2)
+{
+    uint64_t    *left = (uint64_t *)p1;
+    uint64_t    *right = (uint64_t *)p2;
+
+    if (*left < *right) {
+        return -1;
+    } else if (*left > *right) {
+        return 1;
+    }
+    return 0;
+}
+
+static void
+gnix_print_trace_flow_rel(flow_attr_t *flow_attr, uint32_t op)
+{
+    stat_array_t    stat_array[flow_attr->max_points];
+    int     column_widths[flow_attr->max_points];
+    char    pbuf[1024];
+    char    flow_name[128];
+    FILE    *outf;
+    char    *strptr;
+    uint64_t value, time_base;
+    int i, j;
+
+    /* If there are no trace points for this operation, return without printing
+     * anything.
+     */
+
+    if (flow_attr->op_iterations[op] == 0) {
+        return;
+    }
+    value = get_value(flow_attr, op, /* point */ 0, /* iteration */ 0,
+                /* start */ true);
+    if (value == 0) {
+        return;
+    }
+
+    /* Compute the unique name to describe this flow.  Create an output file
+     * by that name.
+     */
+
+    sprintf(flow_name, "%s_%s_%s_%d_rel", test_name_fragment, set_name_fragment,
+            flow_attr->flow_name_fragment, op);
+
+    if ((outf = fopen(flow_name, "w")) == NULL) {
+        fprintf(stderr, "fopen of file %s failed, errno %d\n",
+                flow_name, errno);
+        exit(1);
+    }
+
+
+    uint32_t iterations = flow_attr->op_iterations[op];
+
+    /* Work out the width of each column using the header names, allowing for
+     * the fact that column 1 is wider because it is a full nanosecond
+     * timestamp, not a delta. The deltas are assumed to always be shorter than
+     * the names.
+     */
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+        column_widths[j] = strlen(find_name(flow_attr->enum_to_name, j));
+
+        if (j == 0 && column_widths[j] < 17) {
+            column_widths[j] = 17;
+        }
+    }
+
+    /* Print the header line.  The column headers are the names of each of the
+     * trace points.
+     */
+
+    fprintf(outf, "\n\n%s\n\n", flow_name);
+
+    strptr = pbuf;
+    sprintf(pbuf, "entry    ");
+    strptr += strlen(strptr);
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+        sprintf(strptr, "  %*s", column_widths[j], find_name(flow_attr->enum_to_name, j));
+        strptr += strlen(strptr);
+    }
+    fprintf(outf, "%s\n", pbuf);
+
+    /* Print out each point as a delta against its own start time. */
+
+    for (i = 0; i < iterations; i++) {
+        time_base = get_value(flow_attr, op, /* point */ 0, /* iteration */ i,
+                /* start */ true);
+        if (time_base == 0) {
+            break;          // test ended early
+        }
+
+        strptr = pbuf;
+        sprintf(strptr, "%5d    ", i);
+        strptr += strlen(strptr);
+
+        for (j = 0; j < flow_attr->max_points; j++) {
+            uint64_t start, end;
+
+            if (j == 0) {
+                /* The first column shows the duration of the entire flow. */
+
+                end = get_value(flow_attr, op,
+                        /* point */ flow_attr->max_points - 1,
+                        /* iteration */ i, /* start */ false);
+                start = time_base;
+
+            } else {
+                end = get_value(flow_attr, op, /* point */ j,
+                        /* iteration */ i, /* start */ false);
+                start = get_value(flow_attr, op, /* point */ j,
+                        /* iteration */ i, /* start */ true);
+            }
+            if (end) {
+                value = end - start;
+            } else {
+                value = 0;
+            }
+            sprintf(strptr, "  %*.3f", column_widths[j], (double)value / 1000.0);
+            strptr += strlen(strptr);
+        }
+        fprintf(outf, "%s\n", pbuf);
+    }
+
+    /* Repeat the above loop to produce values for a column, sort them into
+     * order, compute max, min, mean, median, stddev, and also add quartile
+     * code to throw out outliers (and report how many there were).
+     */
+
+    uint64_t column_values[iterations];
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+
+        for (i = 0; i < iterations; i++) {
+            uint64_t start, end;
+
+            if (j == 0) {
+                /* The first column shows the duration of the entire flow. */
+
+                end = get_value(flow_attr, op,
+                        /* point */ flow_attr->max_points - 1,
+                        /* iteration */ i, /* start */ false);
+                start = get_value(flow_attr, op,
+                        /* point */ 0, /* iteration */ i, /* start */ true);
+
+            } else {
+                end = get_value(flow_attr, op, /* point */ j,
+                        /* iteration */ i, /* start */ false);
+                start = get_value(flow_attr, op, /* point */ j,
+                        /* iteration */ i, /* start */ true);
+            }
+            if (end) {
+                column_values[i] = end - start;
+            } else {
+                column_values[i] = 0;
+            }
+        }
+
+        qsort(column_values, iterations, sizeof(*column_values), sort_uint64);
+
+        /* See Method 1 in https://en.wikipedia.org/wiki/Quartile for how
+         * quartiles are calculated here, the median value is not included in
+         * either half if the total number of samples is odd.  Also read the
+         * Outliers section, where lower and upper fence values are explained.
+         */
+
+        /* Compute the size of each half, and the zero-based offset to the
+         * first value in the second half.
+         */
+
+        uint32_t h1s, h2o, lb, ub, outliers, inliers;
+        double q1, q3, iqr, lf, uf;
+
+        if (iterations & 0x1) {     // odd number of samples
+            h1s = iterations / 2;   // do not include median sample
+            h2o = h1s + 1;          // one past the median sample
+        } else {                    // even number of samples
+            h1s = iterations / 2;
+            h2o = h1s;              // one past the median sample
+        }
+
+        /* Compute the first and third quartile values for the lower and upper
+         * halves, respectively.  If the half contains an odd number of samples,
+         * use the middle value.  If even, use the average of the middle two
+         * samples.
+         */
+
+        if (h1s & 0x1) {
+            q1 = (double)column_values[h1s / 2];
+            q3 = (double)column_values[h2o + (h1s / 2)];
+        } else {
+            q1 = (double)(column_values[h1s / 2] +
+                    column_values[(h1s / 2) - 1]) / 2.0;
+            q3 = (double)(column_values[h2o + (h1s / 2)] +
+                    column_values[h2o + (h1s / 2) - 1]) / 2.0;
+        }
+
+        /* Compute the interquartile range, then the lower and upper fence
+         * values.
+         */
+
+        iqr = q3 - q1;
+
+        lf = q1 - (1.5 * iqr);
+        uf = q3 + (1.5 * iqr);
+
+        /* Find the lower and upper bound offsets in the sample data, excluding
+         * the outliers.  Compute the number of outliers.
+         */
+
+        lb = 0;
+        for (i = 0; i < iterations; i++) {
+            if ((float) column_values[i] >= lf) {
+                lb = i;
+                break;
+            }
+        }
+
+        ub = iterations - 1;
+        for (i = iterations - 1; i >= 0; i--) {
+            if ((float) column_values[i] <= uf) {
+                ub = i;
+                break;
+            }
+        }
+
+        outliers = lb + (iterations - (ub + 1));
+        inliers = iterations - outliers;
+
+        /* Skipping the outliers, compute the max, min, mean, median, and
+         * stddev on the remaining entries in the middle.
+         */
+
+        uint64_t    sum = 0;
+
+        for (i = lb; i <= ub; i++) {
+            sum += column_values[i];
+        }
+
+        /* Convert to microseconds. */
+
+        double max_f = (double)column_values[ub] / 1000.0;
+        double min_f = (double)column_values[lb] / 1000.0;
+        double sum_f = (double)sum / 1000.0;
+
+        stat_array[j].outliers = outliers;
+        stat_array[j].max = max_f;
+        stat_array[j].min = min_f;
+        stat_array[j].mean = sum_f / inliers;
+        stat_array[j].median = ((max_f - min_f) / 2.0) + min_f;
+
+#ifdef  krehm
+        // krehm: gni doesn't link with libm, so sqrt() function not found
+        double diff;
+        double tot = 0.0;
+        for (i = lb; i <= ub; i++) {
+            double value = (double)column_values[i] / 1000.0;
+            diff = value - stat_array[j].mean;
+            tot += (diff * diff);
+        }
+        stat_array[j].stddev = sqrt(tot / (double)iterations);
+#endif
+    }
+
+    /* Now that all the statistics are calculated, print them out. */
+
+    strptr = pbuf;
+    sprintf(pbuf, "-----    ");
+    strptr += strlen(strptr);
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+        sprintf(strptr, "  %*s", column_widths[j], "-------");
+        strptr += strlen(strptr);
+    }
+    fprintf(outf, "%s\n", pbuf);
+
+    strptr = pbuf;
+    sprintf(pbuf, "min      ");
+    strptr += strlen(pbuf);
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+            sprintf(strptr, "  %*.3f", column_widths[j], stat_array[j].min);
+        strptr += strlen(strptr);
+    }
+    fprintf(outf, "%s\n", pbuf);
+
+    strptr = pbuf;
+    sprintf(pbuf, "max      ");
+    strptr += strlen(pbuf);
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+            sprintf(strptr, "  %*.3f", column_widths[j], stat_array[j].max);
+        strptr += strlen(strptr);
+    }
+    fprintf(outf, "%s\n", pbuf);
+
+    strptr = pbuf;
+    sprintf(pbuf, "mean     ");
+    strptr += strlen(pbuf);
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+            sprintf(strptr, "  %*.3f", column_widths[j], stat_array[j].mean);
+        strptr += strlen(strptr);
+    }
+    fprintf(outf, "%s\n", pbuf);
+
+    strptr = pbuf;
+    sprintf(pbuf, "median   ");
+    strptr += strlen(pbuf);
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+            sprintf(strptr, "  %*.3f", column_widths[j], stat_array[j].median);
+        strptr += strlen(strptr);
+    }
+    fprintf(outf, "%s\n", pbuf);
+
+#ifdef  krehm
+    // krehm: libfabric doesn't link with libm
+    strptr = pbuf;
+    sprintf(pbuf, "stddev   ");
+    strptr += strlen(pbuf);
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+            sprintf(strptr, "  %*.3f", column_widths[j], stat_array[j].stddev);
+        strptr += strlen(strptr);
+    }
+#endif
+
+    strptr = pbuf;
+    sprintf(pbuf, "outliers ");
+    strptr += strlen(pbuf);
+
+    for (j = 0; j < flow_attr->max_points; j++) {
+            sprintf(strptr, "  %*d", column_widths[j], stat_array[j].outliers);
+        strptr += strlen(strptr);
+    }
+
+    fprintf(outf, "%s\n\n", pbuf);
+
+    fclose(outf);
+}
+
+
+void
+gnix_print_trace_buffers()
+{
+    int op;
+
+    for (op = 0; op < TRACE_SEND_OP_MAX; op++) {
+        gnix_print_trace_flow_abs(&send_attr, op);
+        gnix_print_trace_flow_rel(&send_attr, op);
+    }
+    for (op = 0; op < TRACE_RECV_OP_MAX; op++) {
+        gnix_print_trace_flow_abs(&recv_attr, op);
+        gnix_print_trace_flow_rel(&recv_attr, op);
+    }
+    for (op = 0; op < TRACE_READ_OP_MAX; op++) {
+        gnix_print_trace_flow_abs(&read_attr, op);
+        gnix_print_trace_flow_rel(&read_attr, op);
+    }
+    for (op = 0; op < TRACE_WRITE_OP_MAX; op++) {
+        gnix_print_trace_flow_abs(&write_attr, op);
+        gnix_print_trace_flow_rel(&write_attr, op);
+    }
+}
+
+#endif

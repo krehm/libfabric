@@ -237,6 +237,7 @@ static inline int ofi_is_loopback_addr(struct sockaddr *addr) {
 		((struct sockaddr_in6 *)addr)->sin6_addr.s6_addr32[3] == ntohl(1));
 }
 
+#ifndef __STDC_NO_COMPLEX__
 
 /* complex operations implementation */
 
@@ -280,6 +281,7 @@ OFI_DEF_COMPLEX_OPS(float)
 OFI_DEF_COMPLEX_OPS(double)
 OFI_DEF_COMPLEX_OPS(long_double)
 
+#endif /* __STDC_NO_COMPLEX__ */
 
 /* atomics primitives */
 #ifdef HAVE_BUILTIN_ATOMICS

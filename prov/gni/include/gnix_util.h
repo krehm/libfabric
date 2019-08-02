@@ -40,6 +40,13 @@
 #ifndef _GNIX_UTIL_H_
 #define _GNIX_UTIL_H_
 
+#define TIMESTAMP_INSTRUMENTATION 1
+
+#ifdef  TIMESTAMP_INSTRUMENTATION
+#include <time.h>
+#include <stdbool.h>
+#endif
+
 #include <stdio.h>
 #include <ofi.h>
 
@@ -284,5 +291,279 @@ static inline void _gnix_ref_init(
 
 #define READ_PREFETCH(addr) __PREFETCH(addr, 0, 3)
 #define WRITE_PREFETCH(addr) __PREFETCH(addr, 1, 3)
+
+
+#define GNIX_NO_TRACE   0xffffffff
+#define GNIX_NO_OP      0xffffffff
+
+#ifdef  TIMESTAMP_INSTRUMENTATION
+
+typedef struct  {
+    uint64_t    start;
+    uint64_t    end;
+} time_delta_t;
+
+
+static inline uint64_t
+get_trace_value(time_delta_t *matrix, uint32_t max_points, uint32_t point,
+        uint32_t iteration, bool start)
+{
+    uint32_t offset = (max_points * iteration) + point;
+
+    if (start) {
+        return matrix[offset].start;
+    } else {
+        return matrix[offset].end;
+    }
+}
+
+static inline void
+set_trace_value(time_delta_t *matrix, uint32_t max_points, uint32_t point,
+        uint32_t iteration, bool start, uint64_t value)
+{
+    uint32_t offset = (max_points * iteration) + point;
+
+    if (start) {
+        matrix[offset].start = value;
+    } else {
+        matrix[offset].end = value;
+    }
+}
+
+
+/* ---------------------------------------------------------- */
+
+typedef enum {
+    TRACE_SEND_FI_SENDMSG = 0,            // app thread enters fi_sendmsg
+    TRACE_SEND_UGNI_SENT,                 // SMSG is on the wire
+    TRACE_SEND_REQ_QUEUED,                // SMSG queued for later processing
+    TRACE_SEND_APP_RETURN,                // app thread leaves fi_sendmsg
+    TRACE_SEND_CQE_RECVD,                 // UGNI CQE arrives off the wire
+    TRACE_SEND_B_ADD_EVENT,               // about to create libfabric CQE
+    TRACE_SEND_A_EVT_QUEUED,              // libfabric CQE queued to the CQ
+    TRACE_SEND_A_OBJ_SIGNAL,              // app has been signaled
+    TRACE_SEND_UGNI_EXIT,                 // UGNI CQE processing complete
+    TRACE_SEND_APP_REENTRY,               // app thread leaves fi_cq_sreadfrom
+
+    TRACE_SEND_POINT_MAX
+} trace_send_points_t;
+
+#define TRACE_SEND_OP_MAX 2               // max # of send operations per flow
+
+extern time_delta_t *trace_send_array[TRACE_SEND_OP_MAX];
+extern uint32_t trace_send_count[TRACE_SEND_OP_MAX];
+
+#define TRACE_SEND_SET_START_POINT(point, id, op, point2)                      \
+    if (op < TRACE_SEND_OP_MAX && id < trace_send_count[op]) {                 \
+        uint64_t value2 = get_trace_value(trace_send_array[op],                \
+            TRACE_SEND_POINT_MAX, point2, id, false);                          \
+        set_trace_value(trace_send_array[op],                                  \
+            TRACE_SEND_POINT_MAX, point, id, true, value2);                    \
+    }
+
+#define TRACE_SEND_SET_START_TIME(point, id, op, time)                         \
+    if (op < TRACE_SEND_OP_MAX && id < trace_send_count[op]) {                 \
+        set_trace_value(trace_send_array[op],                                  \
+            TRACE_SEND_POINT_MAX, point, id, true, time);                      \
+    }
+
+#define TRACE_SEND_SET_START(point, id, op)                                    \
+    if (op < TRACE_SEND_OP_MAX && id < trace_send_count[op]) {                 \
+        set_trace_value(trace_send_array[op],                                  \
+            TRACE_SEND_POINT_MAX, point, id, true, get_nanosecs());            \
+    }
+
+#define TRACE_SEND_SET_END_TIME(point, id, op, time)                           \
+    if (op < TRACE_SEND_OP_MAX && id < trace_send_count[op]) {                 \
+        set_trace_value(trace_send_array[op],                                  \
+            TRACE_SEND_POINT_MAX, point, id, false, time);                     \
+    }
+
+#define TRACE_SEND_SET_END(point, id, op)                                      \
+    if (op < TRACE_SEND_OP_MAX && id < trace_send_count[op]) {                 \
+        set_trace_value(trace_send_array[op],                                  \
+            TRACE_SEND_POINT_MAX, point, id, false, get_nanosecs());           \
+    }
+
+/* ---------------------------------------------------------- */
+
+typedef enum {
+    TRACE_RECV_SMSG_ENTRY = 0,        // SMSG arrives off wire
+    TRACE_RECV_A_MATCH_TAG,           // matching buffer has been found
+    TRACE_RECV_B_MEMCPY,              // data about to be copied into the buffer
+    TRACE_RECV_A_MEMCPY,              // data is copied into the buffer
+    TRACE_RECV_A_EVT_QUEUED,          // libfabric CQE queued to the CQ
+    TRACE_RECV_A_OBJ_SIGNAL,          // app has been signaled
+    TRACE_RECV_UGNI_EXIT,             // SMSG deleted, ready for next
+    TRACE_RECV_APP_REENTRY,           // app thread leaves fi_sreadfrom
+
+    TRACE_RECV_POINT_MAX
+} trace_recv_points_t;
+
+#define TRACE_RECV_OP_MAX 2         // max # of receive operations per flow
+
+extern time_delta_t *trace_recv_array[TRACE_RECV_OP_MAX];
+extern uint32_t trace_recv_count[TRACE_RECV_OP_MAX];
+
+#define TRACE_RECV_SET_START_POINT(point, id, op, point2)                      \
+    if (op < TRACE_RECV_OP_MAX && id < trace_recv_count[op]) {                 \
+        uint64_t value2 = get_trace_value(trace_recv_array[op],                \
+            TRACE_RECV_POINT_MAX, point2, id, false);                          \
+        set_trace_value(trace_recv_array[op],                                  \
+            TRACE_RECV_POINT_MAX, point, id, true, value2);                    \
+    }
+
+#define TRACE_RECV_SET_START_TIME(point, id, op, time)                         \
+    if (op < TRACE_RECV_OP_MAX && id < trace_recv_count[op]) {                 \
+        set_trace_value(trace_recv_array[op],                                  \
+            TRACE_RECV_POINT_MAX, point, id, true, time);                      \
+    }
+
+#define TRACE_RECV_SET_START(point, id, op)                                    \
+    if (op < TRACE_RECV_OP_MAX && id < trace_recv_count[op]) {                 \
+        set_trace_value(trace_recv_array[op],                                  \
+            TRACE_RECV_POINT_MAX, point, id, true, get_nanosecs());            \
+    }
+
+#define TRACE_RECV_SET_END_TIME(point, id, op, time)                           \
+    if (op < TRACE_RECV_OP_MAX && id < trace_recv_count[op]) {                 \
+        set_trace_value(trace_recv_array[op],                                  \
+            TRACE_RECV_POINT_MAX, point, id, false, time);                     \
+    }
+
+#define TRACE_RECV_SET_END(point, id, op)                                      \
+    if (op < TRACE_RECV_OP_MAX && id < trace_recv_count[op]) {                 \
+        set_trace_value(trace_recv_array[op],                                  \
+            TRACE_RECV_POINT_MAX, point, id, false, get_nanosecs());           \
+    }
+
+/* ---------------------------------------------------------- */
+
+typedef enum {
+    TRACE_READ_FI_READMSG = 0,                // app enters fi_readmsg
+    TRACE_READ_UGNI_SENT,
+    TRACE_READ_REQ_QUEUED,
+    TRACE_READ_APP_RETURN,
+    TRACE_READ_CQE_RECVD,                     // UGNI CQE arrives off the wire
+    TRACE_READ_B_ADD_EVENT,                   // about to create libfabric CQE
+    TRACE_READ_A_EVT_QUEUED,                  // libfabric CQE queued to the CQ
+    TRACE_READ_A_OBJ_SIGNAL,                  // app has been signaled
+    TRACE_READ_UGNI_EXIT,                     // UGNI CQE processing complete
+    TRACE_READ_APP_REENTRY,                   // app about to leave fi_sreadfrom
+
+    TRACE_READ_POINT_MAX
+} trace_read_points_t; 
+
+#define TRACE_READ_OP_MAX 1         // max # of read operations per flow
+
+extern time_delta_t *trace_read_array[TRACE_READ_OP_MAX];
+extern uint32_t trace_read_count[TRACE_READ_OP_MAX];
+
+#define TRACE_READ_SET_START_POINT(point, id, op, point2)                      \
+    if (op < TRACE_READ_OP_MAX && id < trace_read_count[op]) {                 \
+        uint64_t value2 = get_trace_value(trace_read_array[op],                \
+            TRACE_READ_POINT_MAX, point2, id, false);                          \
+        set_trace_value(trace_read_array[op],                                  \
+            TRACE_READ_POINT_MAX, point, id, true, value2);                    \
+    }
+
+#define TRACE_READ_SET_START_TIME(point, id, op, time)                         \
+    if (op < TRACE_READ_OP_MAX && id < trace_read_count[op]) {                 \
+        set_trace_value(trace_read_array[op],                                  \
+            TRACE_READ_POINT_MAX, point, id, true, time);                      \
+    }
+
+#define TRACE_READ_SET_START(point, id, op)                                    \
+    if (op < TRACE_READ_OP_MAX && id < trace_read_count[op]) {                 \
+        set_trace_value(trace_read_array[op],                                  \
+            TRACE_READ_POINT_MAX, point, id, true, get_nanosecs());            \
+    }
+
+#define TRACE_READ_SET_END_TIME(point, id, op, time)                           \
+    if (op < TRACE_READ_OP_MAX && id < trace_read_count[op]) {                 \
+        set_trace_value(trace_read_array[op],                                  \
+            TRACE_READ_POINT_MAX, point, id, false, time);                     \
+    }
+
+#define TRACE_READ_SET_END(point, id, op)                                      \
+    if (op < TRACE_READ_OP_MAX && id < trace_read_count[op]) {                 \
+        set_trace_value(trace_read_array[op],                                  \
+            TRACE_READ_POINT_MAX, point, id, false, get_nanosecs());           \
+    }
+
+/* ---------------------------------------------------------- */
+
+typedef enum {
+    TRACE_WRITE_FI_WRITEMSG = 0,               // app enters fi_writemsg
+    TRACE_WRITE_UGNI_SENT,
+    TRACE_WRITE_REQ_QUEUED,
+    TRACE_WRITE_APP_RETURN,
+    TRACE_WRITE_CQE_RECVD,                     // UGNI CQE arrives off the wire
+    TRACE_WRITE_B_ADD_EVENT,                   // about to create libfabric CQE
+    TRACE_WRITE_A_EVT_QUEUED,                  // libfabric CQE queued to the CQ
+    TRACE_WRITE_A_OBJ_SIGNAL,                  // app has been signaled
+    TRACE_WRITE_UGNI_EXIT,                     // UGNI CQE processing complete
+    TRACE_WRITE_APP_REENTRY,                     // app about to leave fi_sreadfrom
+
+    TRACE_WRITE_POINT_MAX
+} trace_write_points_t; 
+
+#define TRACE_WRITE_OP_MAX 1            // max # of write operations per flow
+
+extern time_delta_t *trace_write_array[TRACE_WRITE_OP_MAX];
+extern uint32_t trace_write_count[TRACE_WRITE_OP_MAX];
+
+#define TRACE_WRITE_SET_START_POINT(point, id, op, point2)                     \
+    if (op < TRACE_WRITE_OP_MAX && id < trace_write_count[op]) {               \
+        uint64_t value2 = get_trace_value(trace_write_array[op],               \
+            TRACE_WRITE_POINT_MAX, point2, id, false);                         \
+        set_trace_value(trace_write_array[op],                                 \
+            TRACE_WRITE_POINT_MAX, point, id, true, value2);                   \
+    }
+
+#define TRACE_WRITE_SET_START_TIME(point, id, op, time)                        \
+    if (op < TRACE_WRITE_OP_MAX && id < trace_write_count[op]) {               \
+        set_trace_value(trace_write_array[op],                                 \
+            TRACE_WRITE_POINT_MAX, point, id, true, time);                     \
+    }
+
+#define TRACE_WRITE_SET_START(point, id, op)                                   \
+    if (op < TRACE_WRITE_OP_MAX && id < trace_write_count[op]) {               \
+        set_trace_value(trace_write_array[op],                                 \
+            TRACE_WRITE_POINT_MAX, point, id, true, get_nanosecs());           \
+    }
+
+#define TRACE_WRITE_SET_END_TIME(point, id, op, time)                          \
+    if (op < TRACE_WRITE_OP_MAX && id < trace_write_count[op]) {               \
+        set_trace_value(trace_write_array[op],                                 \
+            TRACE_WRITE_POINT_MAX, point, id, false, time);                    \
+    }
+
+#define TRACE_WRITE_SET_END(point, id, op)                                     \
+    if (op < TRACE_WRITE_OP_MAX && id < trace_write_count[op]) {               \
+        set_trace_value(trace_write_array[op],                                 \
+            TRACE_WRITE_POINT_MAX, point, id, false, get_nanosecs());          \
+    }
+
+/* ---------------------------------------------------------- */
+
+extern void gnix_allocate_trace_buffers(const char *test_name,
+        const char *set_name, uint32_t iterations);
+extern void gnix_deallocate_trace_buffers();
+extern void gnix_print_trace_buffers();
+
+static inline uint64_t
+get_nanosecs(void)
+{
+    struct timespec tspec;
+    uint64_t    nanoseconds;
+
+    clock_gettime(CLOCK_MONOTONIC, &tspec);
+    nanoseconds = (tspec.tv_sec * 1000000000uLL) + tspec.tv_nsec;
+
+    return nanoseconds;
+}
+
+#endif
 
 #endif

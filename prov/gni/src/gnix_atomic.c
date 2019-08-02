@@ -43,6 +43,7 @@
 #include "gnix_ep.h"
 #include "gnix_mr.h"
 #include "gnix_cntr.h"
+#include "gnix_util.h"
 
 static int __gnix_amo_send_err(struct gnix_fid_ep *ep,
 			       struct gnix_fab_req *req,
@@ -54,7 +55,11 @@ static int __gnix_amo_send_err(struct gnix_fid_ep *ep,
 
 	if (ep->send_cq) {
 		rc = _gnix_cq_add_error(ep->send_cq, req->user_context,
-					flags, 0, 0, 0, 0, 0, error,
+					flags, 0, 0, 0, 0, 0,
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                                        GNIX_NO_TRACE, GNIX_NO_OP,
+#endif
+                                        error,
 					gnixu_to_fi_errno(GNI_RC_TRANSACTION_ERROR),
 					NULL, 0);
 		if (rc) {
@@ -95,7 +100,11 @@ static int __gnix_amo_send_completion(struct gnix_fid_ep *ep,
 
 	if ((req->flags & FI_COMPLETION) && ep->send_cq) {
 		rc = _gnix_cq_add_event(ep->send_cq, ep, req->user_context,
-					flags, 0, 0, 0, 0, FI_ADDR_NOTAVAIL);
+					flags, 0, 0, 0, 0,
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                                        GNIX_NO_TRACE, GNIX_NO_OP,
+#endif
+                                        FI_ADDR_NOTAVAIL);
 		if (rc) {
 			GNIX_WARN(FI_LOG_EP_DATA,
 				  "_gnix_cq_add_event() failed: %d\n", rc);

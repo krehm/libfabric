@@ -44,6 +44,7 @@
 #include "gnix_cq.h"
 #include "gnix_nic.h"
 #include "gnix_cm_nic.h"
+#include "gnix_util.h"
 
 /*******************************************************************************
  * Function pointer for filling specific entry format type.
@@ -261,6 +262,9 @@ static int __gnix_cq_progress(struct gnix_fid_cq *cq)
 ssize_t _gnix_cq_add_event(struct gnix_fid_cq *cq, struct gnix_fid_ep *ep,
 			   void *op_context, uint64_t flags, size_t len,
 			   void *buf, uint64_t data, uint64_t tag,
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                           uint32_t trace_id, uint32_t trace_op,
+#endif
 			   fi_addr_t src_addr)
 {
 	struct gnix_cq_entry *event;
@@ -292,6 +296,12 @@ ssize_t _gnix_cq_add_event(struct gnix_fid_cq *cq, struct gnix_fid_ep *ep,
 
 	event = container_of(item, struct gnix_cq_entry, item);
 
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        event->trace_id = trace_id;
+        event->trace_op = trace_op;
+        event->flags = flags;
+#endif
+
 	assert(event->the_entry);
 
 	fill_function[cq->attr.format](event->the_entry, op_context, flags,
@@ -299,10 +309,56 @@ ssize_t _gnix_cq_add_event(struct gnix_fid_cq *cq, struct gnix_fid_ep *ep,
 	event->src_addr = src_addr;
 
 	_gnix_queue_enqueue(cq->events, &event->item);
+
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        GNIX_ERR(FI_LOG_EP_DATA, "flags = 0x%x\n", flags);
+        if ((flags & FI_READ) != 0) {
+            TRACE_READ_SET_START_POINT(TRACE_READ_A_EVT_QUEUED, trace_id,
+                trace_op, TRACE_READ_B_ADD_EVENT);
+            TRACE_READ_SET_END(TRACE_READ_A_EVT_QUEUED, trace_id, trace_op);
+        } else if ((flags & FI_WRITE) != 0) {
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_A_EVT_QUEUED, trace_id,
+                trace_op, TRACE_WRITE_B_ADD_EVENT);
+            TRACE_WRITE_SET_END(TRACE_WRITE_A_EVT_QUEUED, trace_id, trace_op);
+        } else if ((flags & FI_SEND) != 0) {
+            TRACE_SEND_SET_START_POINT(TRACE_SEND_A_EVT_QUEUED, trace_id,
+                trace_op, TRACE_SEND_B_ADD_EVENT);
+            TRACE_SEND_SET_END(TRACE_SEND_A_EVT_QUEUED, trace_id, trace_op);
+        } else {
+            TRACE_RECV_SET_START_POINT(TRACE_RECV_A_EVT_QUEUED, trace_id,
+                trace_op, TRACE_RECV_A_MEMCPY);
+            TRACE_RECV_SET_END(TRACE_RECV_A_EVT_QUEUED, trace_id, trace_op);
+        }
+#endif
 	GNIX_DEBUG(FI_LOG_CQ, "Added event: %lx\n", op_context);
 
-	if (cq->wait)
+	if (cq->wait) {
 		_gnix_signal_wait_obj(cq->wait);
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                GNIX_ERR(FI_LOG_EP_DATA, "flags = 0x%x\n", flags);
+                if ((flags & FI_READ) != 0) {
+                    TRACE_READ_SET_START_POINT(TRACE_READ_A_OBJ_SIGNAL,
+                        trace_id, trace_op, TRACE_READ_A_EVT_QUEUED);
+                    TRACE_READ_SET_END(TRACE_READ_A_OBJ_SIGNAL, trace_id,
+                            trace_op);
+                } else if ((flags & FI_WRITE) != 0) {
+                    TRACE_WRITE_SET_START_POINT(TRACE_WRITE_A_OBJ_SIGNAL,
+                        trace_id, trace_op, TRACE_WRITE_A_EVT_QUEUED);
+                    TRACE_WRITE_SET_END(TRACE_WRITE_A_OBJ_SIGNAL, trace_id,
+                            trace_op);
+                } else if ((flags & FI_SEND) != 0) {
+                    TRACE_SEND_SET_START_POINT(TRACE_SEND_A_OBJ_SIGNAL,
+                        trace_id, trace_op, TRACE_SEND_A_EVT_QUEUED);
+                    TRACE_SEND_SET_END(TRACE_SEND_A_OBJ_SIGNAL, trace_id,
+                        trace_op);
+                } else {
+                    TRACE_RECV_SET_START_POINT(TRACE_RECV_A_OBJ_SIGNAL,
+                        trace_id, trace_op, TRACE_RECV_A_EVT_QUEUED);
+                    TRACE_RECV_SET_END(TRACE_RECV_A_OBJ_SIGNAL, trace_id,
+                        trace_op);
+                }
+#endif
+        }
 
 err:
 	COND_RELEASE(cq->requires_lock, &cq->lock);
@@ -313,6 +369,9 @@ err:
 ssize_t _gnix_cq_add_error(struct gnix_fid_cq *cq, void *op_context,
 			   uint64_t flags, size_t len, void *buf,
 			   uint64_t data, uint64_t tag, size_t olen,
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                           uint32_t trace_id, uint32_t trace_op,
+#endif
 			   int err, int prov_errno, void *err_data,
 			   size_t err_data_size)
 {
@@ -335,6 +394,11 @@ ssize_t _gnix_cq_add_error(struct gnix_fid_cq *cq, void *op_context,
 	}
 
 	event = container_of(item, struct gnix_cq_entry, item);
+
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        event->trace_id = trace_id;
+        event->trace_op = trace_op;
+#endif
 
 	error = event->the_entry;
 
@@ -464,6 +528,35 @@ static ssize_t __gnix_cq_readfrom(struct fid_cq *cq, void *buf,
 		_gnix_queue_enqueue_free(cq_priv->events, &event->item);
 
 		buf = (void *) ((uint8_t *) buf + cq_priv->entry_size);
+
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                GNIX_ERR(FI_LOG_EP_DATA, "event->flags = 0x%x\n", event->flags);
+                if ((event->flags & FI_READ) != 0) {
+                    TRACE_READ_SET_START_POINT(TRACE_READ_APP_REENTRY,
+                        event->trace_id, event->trace_op,
+                        TRACE_READ_A_OBJ_SIGNAL);
+                    TRACE_READ_SET_END(TRACE_READ_APP_REENTRY,
+                        event->trace_id, event->trace_op);
+                } else if ((event->flags & FI_WRITE) != 0) {
+                    TRACE_WRITE_SET_START_POINT(TRACE_WRITE_APP_REENTRY,
+                        event->trace_id, event->trace_op,
+                        TRACE_WRITE_A_OBJ_SIGNAL);
+                    TRACE_WRITE_SET_END(TRACE_WRITE_APP_REENTRY,
+                        event->trace_id, event->trace_op);
+                } else if ((event->flags & FI_SEND) != 0) {
+                    TRACE_SEND_SET_START_POINT(TRACE_SEND_APP_REENTRY,
+                        event->trace_id, event->trace_op,
+                        TRACE_SEND_A_OBJ_SIGNAL);
+                    TRACE_SEND_SET_END(TRACE_SEND_APP_REENTRY,
+                        event->trace_id, event->trace_op);
+                } else {
+                    TRACE_RECV_SET_START_POINT(TRACE_RECV_APP_REENTRY,
+                        event->trace_id, event->trace_op, 
+                        TRACE_RECV_A_OBJ_SIGNAL);
+                    TRACE_RECV_SET_END(TRACE_RECV_APP_REENTRY,
+                        event->trace_id, event->trace_op);
+                }
+#endif
 
 		read_count++;
 	}

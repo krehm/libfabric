@@ -54,6 +54,11 @@ struct gnix_fid_ep;
 struct gnix_cq_entry {
 	void *the_entry;
 	fi_addr_t src_addr;
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        uint32_t trace_id;
+        uint32_t trace_op;
+#endif
+        uint64_t flags;
 	struct slist_entry item;
 };
 
@@ -81,11 +86,17 @@ struct gnix_fid_cq {
 ssize_t _gnix_cq_add_event(struct gnix_fid_cq *cq, struct gnix_fid_ep *ep,
 			   void *op_context, uint64_t flags, size_t len,
 			   void *buf, uint64_t data, uint64_t tag,
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                           uint32_t trace_id, uint32_t trace_op,
+#endif
 			   fi_addr_t src_addr);
 
 ssize_t _gnix_cq_add_error(struct gnix_fid_cq *cq, void *op_context,
 			  uint64_t flags, size_t len, void *buf,
 			  uint64_t data, uint64_t tag, size_t olen,
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                          uint32_t trace_id, uint32_t trace_op,
+#endif
 			  int err, int prov_errno, void *err_data,
 			  size_t err_data_size);
 

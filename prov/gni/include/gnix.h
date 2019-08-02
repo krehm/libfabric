@@ -1036,6 +1036,10 @@ struct gnix_fab_req {
 	 * in one of the underlying GNI transactions
 	 */
 	uint32_t		  tx_failures;
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        uint32_t   trace_id;
+        uint32_t   trace_op;
+#endif
 
 	/* common to rma/amo/msg */
 	union {

@@ -44,7 +44,11 @@ ssize_t _gnix_recv_mr(struct gnix_fid_ep *ep, uint64_t buf, size_t len, void *de
 
 ssize_t _gnix_send(struct gnix_fid_ep *ep, uint64_t loc_addr, size_t len,
 		   void *mdesc, uint64_t dest_addr, void *context,
-		   uint64_t flags, uint64_t data, uint64_t tag);
+		   uint64_t flags, uint64_t data, uint64_t tag
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                   , uint32_t trace_id, uint32_t trace_op
+#endif
+                   );
 
 ssize_t _gnix_recvv(struct gnix_fid_ep *ep, const struct iovec *iov,
 		    void **desc, size_t count, uint64_t src_addr, void *context,

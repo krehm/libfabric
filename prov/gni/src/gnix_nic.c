@@ -548,9 +548,31 @@ static void __nic_get_completed_txd(struct gnix_nic *nic,
 		txd_p = container_of(gni_desc,
 				   struct gnix_tx_descriptor,
 				   gni_desc);
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                if (txd_p->req->type == GNIX_FAB_RQ_RDMA_READ) {
+                    TRACE_READ_SET_START_POINT(TRACE_READ_CQE_RECVD,
+                        txd_p->req->trace_id, txd_p->req->trace_op,
+                        TRACE_READ_UGNI_SENT);
+                    TRACE_READ_SET_END(TRACE_READ_CQE_RECVD,
+                        txd_p->req->trace_id, txd_p->req->trace_op);
+                } else {
+                    TRACE_WRITE_SET_START_POINT(TRACE_WRITE_CQE_RECVD,
+                        txd_p->req->trace_id, txd_p->req->trace_op,
+                        TRACE_WRITE_UGNI_SENT);
+                    TRACE_WRITE_SET_END(TRACE_WRITE_CQE_RECVD,
+                        txd_p->req->trace_id, txd_p->req->trace_op);
+                }
+#endif
 	} else if (GNI_CQ_GET_TYPE(cqe) == GNI_CQ_EVENT_TYPE_SMSG) {
 		msg_id = GNI_CQ_GET_MSG_ID(cqe);
 		txd_p = __desc_lkup_by_id(nic, msg_id);
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                TRACE_SEND_SET_START_POINT(TRACE_SEND_CQE_RECVD,
+                        txd_p->req->trace_id, txd_p->req->trace_op,
+                        TRACE_SEND_UGNI_SENT);
+                TRACE_SEND_SET_END(TRACE_SEND_CQE_RECVD, txd_p->req->trace_id,
+                        txd_p->req->trace_op);
+#endif
 	}
 
 	if (OFI_UNLIKELY(txd_p == NULL))
@@ -587,6 +609,11 @@ static int __nic_tx_progress(struct gnix_nic *nic, gni_cq_handle_t cq)
 		COND_RELEASE(nic->requires_lock, &nic->lock);
 
 		if (txd && txd->completer_fn) {
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                        // these get freed in completer_fn().
+                        uint32_t trace_id = txd->req->trace_id;
+                        uint32_t trace_op = txd->req->trace_op;
+#endif
 			ret = txd->completer_fn(txd, tx_status);
 			if (ret != FI_SUCCESS) {
 				/*
@@ -595,6 +622,24 @@ static int __nic_tx_progress(struct gnix_nic *nic, gni_cq_handle_t cq)
 				GNIX_WARN(FI_LOG_EP_DATA,
 					  "TXD completer failed: %d", ret);
 			}
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                        if (txd->req->type == GNIX_FAB_RQ_RDMA_READ) {
+                            TRACE_READ_SET_START_POINT(TRACE_READ_UGNI_EXIT,
+                                trace_id, trace_op, TRACE_READ_A_OBJ_SIGNAL);
+                            TRACE_READ_SET_END(TRACE_READ_UGNI_EXIT,
+                                trace_id, trace_op);
+                        } else if (txd->req->type == GNIX_FAB_RQ_RDMA_WRITE) {
+                            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_UGNI_EXIT,
+                                trace_id, trace_op, TRACE_WRITE_A_OBJ_SIGNAL);
+                            TRACE_WRITE_SET_END(TRACE_WRITE_UGNI_EXIT,
+                                trace_id, trace_op);
+                        } else {
+                            TRACE_SEND_SET_START_POINT(TRACE_SEND_UGNI_EXIT,
+                                trace_id, trace_op, TRACE_SEND_A_OBJ_SIGNAL);
+                            TRACE_SEND_SET_END(TRACE_SEND_UGNI_EXIT,
+                                trace_id, trace_op);
+                        }
+#endif
 		}
 
 		if ((txd == NULL) || ret != FI_SUCCESS)

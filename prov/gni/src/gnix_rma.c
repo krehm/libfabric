@@ -64,7 +64,11 @@ static int __gnix_rma_send_err(struct gnix_fid_ep *ep,
 
 	if (ep->send_cq) {
 		rc = _gnix_cq_add_error(ep->send_cq, req->user_context,
-					flags, 0, 0, 0, 0, 0, error,
+					flags, 0, 0, 0, 0, 0,
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                                        GNIX_NO_TRACE, GNIX_NO_OP,
+#endif
+                                        error,
 					gnixu_to_fi_errno(GNI_RC_TRANSACTION_ERROR),
 					NULL, 0);
 		if (rc) {
@@ -99,8 +103,25 @@ static int __gnix_rma_send_completion(struct gnix_fid_ep *ep,
 	uint64_t flags = req->flags & GNIX_RMA_COMPLETION_FLAGS;
 
 	if ((req->flags & FI_COMPLETION) && ep->send_cq) {
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                if (req->type == GNIX_FAB_RQ_RDMA_READ) {
+                    TRACE_READ_SET_START_POINT(TRACE_READ_B_ADD_EVENT,
+                        req->trace_id, req->trace_op, TRACE_READ_CQE_RECVD);
+                    TRACE_READ_SET_END(TRACE_READ_B_ADD_EVENT, req->trace_id,
+                        req->trace_op);
+                } else if (req->type == GNIX_FAB_RQ_RDMA_WRITE) {
+                    TRACE_WRITE_SET_START_POINT(TRACE_WRITE_B_ADD_EVENT,
+                        req->trace_id, req->trace_op, TRACE_WRITE_CQE_RECVD);
+                    TRACE_WRITE_SET_END(TRACE_WRITE_B_ADD_EVENT, req->trace_id,
+                        req->trace_op);
+                }
+#endif
 		rc = _gnix_cq_add_event(ep->send_cq, ep, req->user_context,
-					flags, 0, 0, 0, 0, FI_ADDR_NOTAVAIL);
+					flags, 0, 0, 0, 0,
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                                        req->trace_id, req->trace_op,
+#endif
+                                        FI_ADDR_NOTAVAIL);
 		if (rc) {
 			GNIX_WARN(FI_LOG_EP_DATA,
 				  "_gnix_cq_add_event() failed: %d\n", rc);
@@ -271,6 +292,9 @@ int __smsg_rma_data(void *data, void *msg)
 	if (GNIX_ALLOW_FI_REMOTE_CQ_DATA(hdr->flags, ep->caps) && ep->recv_cq) {
 		ret = _gnix_cq_add_event(ep->recv_cq, ep, NULL, hdr->user_flags,
 					 0, 0, hdr->user_data, 0,
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                                         GNIX_NO_TRACE, GNIX_NO_OP,
+#endif
 					 FI_ADDR_NOTAVAIL);
 		if (ret != FI_SUCCESS)  {
 			GNIX_WARN(FI_LOG_EP_DATA,
@@ -1300,6 +1324,20 @@ int _gnix_rma_post_req(void *data)
 			  gni_err_str[status]);
 	}
 
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        if (fab_req->type == GNIX_FAB_RQ_RDMA_READ) {
+            TRACE_READ_SET_START_POINT(TRACE_READ_UGNI_SENT,
+                fab_req->trace_id, fab_req->trace_op, TRACE_READ_FI_READMSG);
+            TRACE_READ_SET_END(TRACE_READ_UGNI_SENT, fab_req->trace_id,
+                fab_req->trace_op);
+        } else {
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_UGNI_SENT,
+                fab_req->trace_id, fab_req->trace_op, TRACE_WRITE_FI_WRITEMSG);
+            TRACE_WRITE_SET_END(TRACE_WRITE_UGNI_SENT, fab_req->trace_id,
+                fab_req->trace_op);
+        }
+#endif
+
 	return gnixu_to_fi_errno(status);
 }
 
@@ -1340,7 +1378,11 @@ int _gnix_rma_post_req(void *data)
 ssize_t _gnix_rma(struct gnix_fid_ep *ep, enum gnix_fab_req_type fr_type,
 		  uint64_t loc_addr, size_t len, void *mdesc,
 		  uint64_t dest_addr, uint64_t rem_addr, uint64_t mkey,
-		  void *context, uint64_t flags, uint64_t data)
+		  void *context, uint64_t flags, uint64_t data
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                  , uint32_t trace_id, uint32_t trace_op
+#endif
+                  )
 {
 	struct gnix_vc *vc;
 	struct gnix_fab_req *req;
@@ -1352,6 +1394,10 @@ ssize_t _gnix_rma(struct gnix_fid_ep *ep, enum gnix_fab_req_type fr_type,
 	struct slist_entry *sle;
 	int connected;
 	struct gnix_auth_key *info;
+
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        uint64_t tstamp = get_nanosecs();
+#endif
 
 	if (!(flags & FI_INJECT) && !ep->send_cq &&
 	    (((fr_type == GNIX_FAB_RQ_RDMA_WRITE) && !ep->write_cntr) ||
@@ -1381,6 +1427,24 @@ ssize_t _gnix_rma(struct gnix_fid_ep *ep, enum gnix_fab_req_type fr_type,
 		GNIX_INFO(FI_LOG_EP_DATA, "_gnix_fr_alloc() failed\n");
 		return -FI_ENOSPC;
 	}
+
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        req->trace_id = trace_id;
+        req->trace_op = trace_op;
+        if (fr_type == GNIX_FAB_RQ_RDMA_READ) {
+            TRACE_READ_SET_START_TIME(TRACE_READ_FI_READMSG, req->trace_id,
+                req->trace_op, tstamp);
+            // krehm: bit of a kludge, to save creating another macro
+            TRACE_READ_SET_END_TIME(TRACE_READ_FI_READMSG, req->trace_id,
+                    req->trace_op, tstamp);
+        } else {
+            TRACE_WRITE_SET_START_TIME(TRACE_WRITE_FI_WRITEMSG,
+                req->trace_id, req->trace_op, tstamp);
+            // krehm: bit of a kludge, to save creating another macro
+            TRACE_WRITE_SET_END_TIME(TRACE_WRITE_FI_WRITEMSG, req->trace_id,
+                    req->trace_op, tstamp);
+        }
+#endif
 
 	rdma = len >= ep->domain->params.rma_rdma_thresh;
 
@@ -1560,6 +1624,19 @@ ssize_t _gnix_rma(struct gnix_fid_ep *ep, enum gnix_fab_req_type fr_type,
 
 	COND_RELEASE(ep->requires_lock, &ep->vc_lock);
 
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        if (fr_type == GNIX_FAB_RQ_RDMA_READ) {
+            TRACE_READ_SET_START_POINT(TRACE_READ_REQ_QUEUED, req->trace_id,
+                req->trace_op, TRACE_READ_UGNI_SENT);
+            TRACE_READ_SET_END(TRACE_READ_REQ_QUEUED, req->trace_id,
+                req->trace_op);
+        } else {
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_REQ_QUEUED, req->trace_id,
+                req->trace_op, TRACE_WRITE_UGNI_SENT);
+            TRACE_WRITE_SET_END(TRACE_WRITE_REQ_QUEUED, req->trace_id,
+                req->trace_op);
+        }
+#endif
 	/*
 	 * If a new VC was allocated, progress CM before returning.
 	 * If the VC is connected and there's a backlog, poke
@@ -1571,6 +1648,19 @@ ssize_t _gnix_rma(struct gnix_fid_ep *ep, enum gnix_fab_req_type fr_type,
 		_gnix_nic_progress(vc->ep->nic);
 	}
 
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        if (fr_type == GNIX_FAB_RQ_RDMA_READ) {
+            TRACE_READ_SET_START_POINT(TRACE_READ_APP_RETURN, req->trace_id,
+                req->trace_op, TRACE_READ_REQ_QUEUED);
+            TRACE_READ_SET_END(TRACE_READ_APP_RETURN, req->trace_id,
+                    req->trace_op);
+        } else {
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_APP_RETURN, req->trace_id,
+                req->trace_op, TRACE_WRITE_REQ_QUEUED);
+            TRACE_WRITE_SET_END(TRACE_WRITE_APP_RETURN, req->trace_id,
+                    req->trace_op);
+        }
+#endif
 	return rc;
 
 err_get_vc:

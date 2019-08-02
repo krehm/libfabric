@@ -104,6 +104,21 @@ extern ssize_t gnix_ep_sendv(struct fid_ep *ep, const struct iovec *iov,
 extern ssize_t gnix_ep_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 			       uint64_t flags);
 
+#ifdef  TIMESTAMP_INSTRUMENTATION
+extern ssize_t gnix_ep_sendmsg_trace(struct fid_ep *ep,
+                                     const struct fi_msg *msg, uint64_t flags,
+                                     uint32_t trace_id, uint32_t trace_op);
+#endif
+
+extern ssize_t gnix_sep_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
+			       uint64_t flags);
+
+#ifdef  TIMESTAMP_INSTRUMENTATION
+extern ssize_t gnix_sep_sendmsg_trace(struct fid_ep *ep,
+                                     const struct fi_msg *msg, uint64_t flags,
+                                     uint32_t trace_id, uint32_t trace_op);
+#endif
+
 extern ssize_t gnix_ep_msg_inject(struct fid_ep *ep, const void *buf,
 				  size_t len, fi_addr_t dest_addr);
 

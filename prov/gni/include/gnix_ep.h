@@ -248,6 +248,10 @@ _gnix_fr_alloc(struct gnix_fid_ep *ep)
 		/* reset common fields */
 		fr->tx_failures = 0;
 		_gnix_ref_get(ep);
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                fr->trace_id = GNIX_NO_TRACE;
+                fr->trace_op = GNIX_NO_OP;
+#endif
 	}
 
 	return fr;
@@ -329,7 +333,11 @@ ssize_t _ep_sendv(struct fid_ep *ep, const struct iovec *iov,
 		  void **desc, size_t count, fi_addr_t dest_addr,
 		  void *context, uint64_t flags, uint64_t tag);
 ssize_t _ep_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
-		    uint64_t flags, uint64_t tag);
+		    uint64_t flags, uint64_t tag
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                    , uint32_t trace_id, uint32_t trace_op
+#endif
+                    );
 ssize_t _ep_inject(struct fid_ep *ep, const void *buf,
 		   size_t len, uint64_t data, fi_addr_t dest_addr,
 		   uint64_t flags, uint64_t tag);

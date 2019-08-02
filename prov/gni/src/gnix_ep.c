@@ -449,7 +449,11 @@ ssize_t _ep_send(struct fid_ep *ep, const void *buf, size_t len,
 	assert(GNIX_EP_RDM_DGM_MSG(gnix_ep->type));
 
 	return _gnix_send(gnix_ep, (uint64_t)buf, len, desc, dest_addr, context,
-			  gnix_ep->op_flags | flags, 0, tag);
+			  gnix_ep->op_flags | flags, 0, tag
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                          , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                          );
 }
 
 ssize_t _ep_sendv(struct fid_ep *ep, const struct iovec *iov,
@@ -469,7 +473,11 @@ ssize_t _ep_sendv(struct fid_ep *ep, const struct iovec *iov,
 		return _gnix_send(gnix_ep, (uint64_t)iov[0].iov_base,
 				  iov[0].iov_len, desc ? desc[0] : NULL,
 				  dest_addr, context, gnix_ep->op_flags | flags,
-				  0, tag);
+				  0, tag
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                                  , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                                  );
 	}
 
 	return _gnix_sendv(gnix_ep, iov, desc, count, dest_addr, context,
@@ -477,7 +485,11 @@ ssize_t _ep_sendv(struct fid_ep *ep, const struct iovec *iov,
 }
 
 ssize_t _ep_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
-		     uint64_t flags, uint64_t tag)
+		     uint64_t flags, uint64_t tag
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                     , uint32_t trace_id, uint32_t trace_op
+#endif
+                     )
 {
 	struct gnix_fid_ep *gnix_ep;
 
@@ -497,7 +509,11 @@ ssize_t _ep_sendmsg(struct fid_ep *ep, const struct fi_msg *msg,
 	return _gnix_send(gnix_ep, (uint64_t)msg->msg_iov[0].iov_base,
 			  msg->msg_iov[0].iov_len,
 			  msg->desc ? msg->desc[0] : NULL, msg->addr,
-			  msg->context, flags, msg->data, tag);
+			  msg->context, flags, msg->data, tag
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                          , trace_id, trace_op
+#endif
+                          );
 }
 
 ssize_t _ep_inject(struct fid_ep *ep, const void *buf,
@@ -518,7 +534,11 @@ ssize_t _ep_inject(struct fid_ep *ep, const void *buf,
 			GNIX_SUPPRESS_COMPLETION | flags);
 
 	return _gnix_send(gnix_ep, (uint64_t)buf, len, NULL, dest_addr,
-			  NULL, inject_flags, data, tag);
+			  NULL, inject_flags, data, tag
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                          , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                          );
 }
 
 ssize_t _ep_senddata(struct fid_ep *ep, const void *buf,
@@ -539,7 +559,11 @@ ssize_t _ep_senddata(struct fid_ep *ep, const void *buf,
 	sd_flags = gnix_ep->op_flags | FI_REMOTE_CQ_DATA | flags;
 
 	return _gnix_send(gnix_ep, (uint64_t)buf, len, desc, dest_addr,
-			  context, sd_flags, data, tag);
+			  context, sd_flags, data, tag
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                          , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                          );
 }
 
 static void __gnix_vc_destroy_ht_entry(void *val)
@@ -728,7 +752,26 @@ DIRECT_FN STATIC ssize_t gnix_ep_sendmsg(struct fid_ep *ep,
 					 const struct fi_msg *msg,
 					 uint64_t flags)
 {
-	return _ep_sendmsg(ep, msg, flags & GNIX_SENDMSG_FLAGS, 0);
+	return _ep_sendmsg(ep, msg, flags & GNIX_SENDMSG_FLAGS, 0
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                );
+}
+
+DIRECT_FN ssize_t gnix_ep_sendmsg_trace(struct fid_ep *ep,
+					 const struct fi_msg *msg,
+					 uint64_t flags
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                                         , uint32_t trace_id, uint32_t trace_op
+#endif
+                                         )
+{
+	return _ep_sendmsg(ep, msg, flags & GNIX_SENDMSG_FLAGS, 0
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                , trace_id, trace_op
+#endif
+                );
 }
 
 DIRECT_FN STATIC ssize_t gnix_ep_msg_inject(struct fid_ep *ep, const void *buf,
@@ -762,7 +805,11 @@ gnix_ep_msg_injectdata(struct fid_ep *ep, const void *buf, size_t len,
 		GNIX_SUPPRESS_COMPLETION;
 
 	return _gnix_send(gnix_ep, (uint64_t)buf, len, NULL, dest_addr,
-			  NULL, flags, data, 0);
+			  NULL, flags, data, 0
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                          , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                          );
 }
 
 /*******************************************************************************
@@ -788,7 +835,11 @@ DIRECT_FN STATIC ssize_t gnix_ep_read(struct fid_ep *ep, void *buf, size_t len,
 	return _gnix_rma(gnix_ep, GNIX_FAB_RQ_RDMA_READ,
 			 (uint64_t)buf, len, desc,
 			 src_addr, addr, key,
-			 context, flags, 0);
+			 context, flags, 0
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                         , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                         );
 }
 
 DIRECT_FN STATIC ssize_t
@@ -811,7 +862,11 @@ gnix_ep_readv(struct fid_ep *ep, const struct iovec *iov, void **desc,
 	return _gnix_rma(gnix_ep, GNIX_FAB_RQ_RDMA_READ,
 			 (uint64_t)iov[0].iov_base, iov[0].iov_len, desc[0],
 			 src_addr, addr, key,
-			 context, flags, 0);
+			 context, flags, 0
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                         , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                         );
 }
 
 DIRECT_FN STATIC ssize_t
@@ -834,7 +889,11 @@ gnix_ep_readmsg(struct fid_ep *ep, const struct fi_msg_rma *msg, uint64_t flags)
 			 (uint64_t)msg->msg_iov[0].iov_base,
 			 msg->msg_iov[0].iov_len, msg->desc[0],
 			 msg->addr, msg->rma_iov[0].addr, msg->rma_iov[0].key,
-			 msg->context, flags, msg->data);
+			 msg->context, flags, msg->data
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                         , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                         );
 }
 
 DIRECT_FN STATIC ssize_t
@@ -855,7 +914,11 @@ gnix_ep_write(struct fid_ep *ep, const void *buf, size_t len, void *desc,
 
 	return _gnix_rma(gnix_ep, GNIX_FAB_RQ_RDMA_WRITE,
 			 (uint64_t)buf, len, desc, dest_addr, addr, key,
-			 context, flags, 0);
+			 context, flags, 0
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                         , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                         );
 }
 
 DIRECT_FN STATIC ssize_t
@@ -877,7 +940,11 @@ gnix_ep_writev(struct fid_ep *ep, const struct iovec *iov, void **desc,
 
 	return _gnix_rma(gnix_ep, GNIX_FAB_RQ_RDMA_WRITE,
 			 (uint64_t)iov[0].iov_base, iov[0].iov_len, desc[0],
-			 dest_addr, addr, key, context, flags, 0);
+			 dest_addr, addr, key, context, flags, 0
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                         , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                         );
 }
 
 DIRECT_FN STATIC ssize_t gnix_ep_writemsg(struct fid_ep *ep, const struct fi_msg_rma *msg,
@@ -901,7 +968,11 @@ DIRECT_FN STATIC ssize_t gnix_ep_writemsg(struct fid_ep *ep, const struct fi_msg
 			 (uint64_t)msg->msg_iov[0].iov_base,
 			 msg->msg_iov[0].iov_len, msg->desc ? msg->desc[0] : NULL,
 			 msg->addr, msg->rma_iov[0].addr, msg->rma_iov[0].key,
-			 msg->context, flags, msg->data);
+			 msg->context, flags, msg->data
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                         , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                         );
 }
 
 DIRECT_FN STATIC ssize_t gnix_ep_rma_inject(struct fid_ep *ep, const void *buf,
@@ -924,7 +995,11 @@ DIRECT_FN STATIC ssize_t gnix_ep_rma_inject(struct fid_ep *ep, const void *buf,
 	return _gnix_rma(gnix_ep, GNIX_FAB_RQ_RDMA_WRITE,
 			 (uint64_t)buf, len, NULL,
 			 dest_addr, addr, key,
-			 NULL, flags, 0);
+			 NULL, flags, 0
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                         , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                         );
 }
 
 DIRECT_FN STATIC ssize_t
@@ -948,7 +1023,11 @@ gnix_ep_writedata(struct fid_ep *ep, const void *buf, size_t len, void *desc,
 	return _gnix_rma(gnix_ep, GNIX_FAB_RQ_RDMA_WRITE,
 			 (uint64_t)buf, len, desc,
 			 dest_addr, addr, key,
-			 context, flags, data);
+			 context, flags, data
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                         , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                         );
 }
 
 DIRECT_FN STATIC ssize_t
@@ -972,7 +1051,11 @@ gnix_ep_rma_injectdata(struct fid_ep *ep, const void *buf, size_t len,
 	return _gnix_rma(gnix_ep, GNIX_FAB_RQ_RDMA_WRITE,
 			 (uint64_t)buf, len, NULL,
 			 dest_addr, addr, key,
-			 NULL, flags, data);
+			 NULL, flags, data
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                         , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                         );
 }
 
 /*******************************************************************************
@@ -1075,7 +1158,11 @@ DIRECT_FN STATIC ssize_t gnix_ep_tsendmsg(struct fid_ep *ep,
 	if (flags & ~(GNIX_SENDMSG_FLAGS))
 		return -FI_EINVAL;
 
-	return _ep_sendmsg(ep, &_msg, flags | FI_TAGGED, msg->tag);
+	return _ep_sendmsg(ep, &_msg, flags | FI_TAGGED, msg->tag
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                );
 }
 
 DIRECT_FN STATIC ssize_t gnix_ep_tinject(struct fid_ep *ep, const void *buf,
@@ -2867,7 +2954,11 @@ DIRECT_FN STATIC ssize_t gnix_ep_cancel(fid_t fid, void *context)
 		flags = req->flags;
 
 		_gnix_cq_add_error(err_cq, context, flags, len, addr, 0 /* data */,
-				tag, len, FI_ECANCELED, FI_ECANCELED, 0, 0);
+				tag, len
+#ifdef  TIMESTAMP_INSTRUMENTATION
+                                , GNIX_NO_TRACE, GNIX_NO_OP
+#endif
+                                , FI_ECANCELED, FI_ECANCELED, 0, 0);
 
 	}
 

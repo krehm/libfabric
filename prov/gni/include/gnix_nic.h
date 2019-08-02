@@ -228,6 +228,10 @@ struct gnix_nic {
 struct gnix_smsg_eager_hdr {
 	uint64_t flags;
 	uint64_t imm;
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        uint32_t trace_id;
+        uint32_t trace_op;
+#endif
 	uint64_t msg_tag;
 	size_t len;
 };
