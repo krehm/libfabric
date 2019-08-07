@@ -1052,12 +1052,21 @@ gnix_print_trace_flow_abs(flow_attr_t *flow_attr, uint32_t op)
      * anything.
      */
 
+    // krehm: debug temp
+    sprintf(flow_name, "%s_%s_%s_%d_abs", test_name_fragment, set_name_fragment,
+            flow_attr->flow_name_fragment, op);
+
     if (flow_attr->op_iterations[op] == 0) {
+        fprintf(stdout, "flow %s op %d == 0\n", flow_name, op);
         return;
     }
     value = get_value(flow_attr, op, /* point */ 0, /* iteration */ 0,
                 /* start */ true);
     if (value == 0) {
+        fprintf(stdout, "flow %s op %d value == 0\n", flow_name, op);
+        if (flow_attr == &recv_attr && op == 0) {
+            abort();
+        }
         return;
     }
 
@@ -1492,11 +1501,166 @@ gnix_print_trace_flow_rel(flow_attr_t *flow_attr, uint32_t op)
     fclose(outf);
 }
 
+void
+set_start_timestamps()
+{
+    uint64_t value;
+    int op, i;
+
+    /* The starting timestamp for each interval must be set here after the 
+     * test is complete, as threads can race with each other, and getting
+     * the end timestamp for a point that is logically earlier might might
+     * end up with the value 0 because that earlier thread stalled.
+     */
+
+    for (op = 0; op < TRACE_SEND_OP_MAX; op++) {
+
+        if (send_attr.op_iterations[op] == 0) {
+            continue;
+        }
+        value = get_value(&send_attr, op, /* point */ 0, /* iteration */ 0,
+                /* start */ false);
+        if (value == 0) {
+            continue;
+        }
+
+        for (i = 0; i < send_attr.op_iterations[op]; i++) {
+            TRACE_SEND_SET_START_POINT(TRACE_SEND_FI_SENDMSG, i, op,
+                    TRACE_SEND_FI_SENDMSG);
+
+            TRACE_SEND_SET_START_POINT(TRACE_SEND_UGNI_SENT, i, op,
+                    TRACE_SEND_FI_SENDMSG);
+            TRACE_SEND_SET_START_POINT(TRACE_SEND_REQ_QUEUED, i, op,
+                    TRACE_SEND_UGNI_SENT);
+            TRACE_SEND_SET_START_POINT(TRACE_SEND_APP_RETURN, i, op,
+                    TRACE_SEND_REQ_QUEUED);
+            TRACE_SEND_SET_START_POINT(TRACE_SEND_CQE_RECVD, i, op,
+                    TRACE_SEND_UGNI_SENT);
+            TRACE_SEND_SET_START_POINT(TRACE_SEND_B_ADD_EVENT, i, op,
+                    TRACE_SEND_CQE_RECVD);
+            TRACE_SEND_SET_START_POINT(TRACE_SEND_A_EVT_QUEUED, i, op,
+                    TRACE_SEND_B_ADD_EVENT);
+            TRACE_SEND_SET_START_POINT(TRACE_SEND_A_OBJ_SIGNAL, i, op,
+                    TRACE_SEND_A_EVT_QUEUED);
+            TRACE_SEND_SET_START_POINT(TRACE_SEND_UGNI_EXIT, i, op,
+                    TRACE_SEND_A_OBJ_SIGNAL);
+            TRACE_SEND_SET_START_POINT(TRACE_SEND_APP_REENTRY, i, op,
+                    TRACE_SEND_A_OBJ_SIGNAL);
+        }
+    }
+
+    for (op = 0; op < TRACE_RECV_OP_MAX; op++) {
+
+        if (recv_attr.op_iterations[op] == 0) {
+            continue;
+        }
+        value = get_value(&recv_attr, op, /* point */ 0, /* iteration */ 0,
+                /* start */ false);
+        if (value == 0) {
+            continue;
+        }
+
+        for (i = 0; i < recv_attr.op_iterations[op]; i++) {
+            TRACE_RECV_SET_START_POINT(TRACE_RECV_SMSG_ENTRY, i, op,
+                TRACE_RECV_SMSG_ENTRY);
+
+            TRACE_RECV_SET_START_POINT(TRACE_RECV_A_MATCH_TAG, i, op,
+                TRACE_RECV_SMSG_ENTRY);
+            TRACE_RECV_SET_START_POINT(TRACE_RECV_B_MEMCPY, i, op,
+                TRACE_RECV_A_MATCH_TAG);
+            TRACE_RECV_SET_START_POINT(TRACE_RECV_A_MEMCPY, i, op,
+                TRACE_RECV_B_MEMCPY);
+            TRACE_RECV_SET_START_POINT(TRACE_RECV_A_EVT_QUEUED, i, op,
+                TRACE_RECV_A_MEMCPY);
+            TRACE_RECV_SET_START_POINT(TRACE_RECV_A_OBJ_SIGNAL, i, op,
+                TRACE_RECV_A_EVT_QUEUED);
+            TRACE_RECV_SET_START_POINT(TRACE_RECV_UGNI_EXIT, i, op,
+                TRACE_RECV_A_OBJ_SIGNAL);
+            TRACE_RECV_SET_START_POINT(TRACE_RECV_APP_REENTRY, i, op,
+                TRACE_RECV_A_OBJ_SIGNAL);
+        }
+    }
+
+    for (op = 0; op < TRACE_READ_OP_MAX; op++) {
+
+        if (read_attr.op_iterations[op] == 0) {
+            continue;
+        }
+        value = get_value(&read_attr, op, /* point */ 0, /* iteration */ 0,
+                /* start */ false);
+        if (value == 0) {
+            continue;
+        }
+
+        for (i = 0; i < read_attr.op_iterations[op]; i++) {
+            TRACE_READ_SET_START_POINT(TRACE_READ_FI_READMSG, i, op,
+                TRACE_READ_FI_READMSG);
+
+            TRACE_READ_SET_START_POINT(TRACE_READ_UGNI_SENT, i, op,
+                TRACE_READ_FI_READMSG);
+            TRACE_READ_SET_START_POINT(TRACE_READ_REQ_QUEUED, i, op,
+                TRACE_READ_UGNI_SENT);
+            TRACE_READ_SET_START_POINT(TRACE_READ_APP_RETURN, i, op,
+                TRACE_READ_REQ_QUEUED);
+            TRACE_READ_SET_START_POINT(TRACE_READ_CQE_RECVD, i, op,
+                TRACE_READ_UGNI_SENT);
+            TRACE_READ_SET_START_POINT(TRACE_READ_B_ADD_EVENT, i, op,
+                TRACE_READ_CQE_RECVD);
+            TRACE_READ_SET_START_POINT(TRACE_READ_A_EVT_QUEUED, i, op,
+                TRACE_READ_B_ADD_EVENT);
+            TRACE_READ_SET_START_POINT(TRACE_READ_A_OBJ_SIGNAL, i, op,
+                TRACE_READ_A_EVT_QUEUED);
+            TRACE_READ_SET_START_POINT(TRACE_READ_UGNI_EXIT, i, op,
+                TRACE_READ_A_OBJ_SIGNAL);
+            TRACE_READ_SET_START_POINT(TRACE_READ_APP_REENTRY, i, op,
+                TRACE_READ_A_OBJ_SIGNAL);
+        }
+    }
+
+    for (op = 0; op < TRACE_WRITE_OP_MAX; op++) {
+
+        if (write_attr.op_iterations[op] == 0) {
+            continue;
+        }
+        value = get_value(&write_attr, op, /* point */ 0, /* iteration */ 0,
+                /* start */ false);
+        if (value == 0) {
+            continue;
+        }
+
+        for (i = 0; i < write_attr.op_iterations[op]; i++) {
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_FI_WRITEMSG, i, op,
+                TRACE_WRITE_FI_WRITEMSG);
+
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_UGNI_SENT, i, op,
+                TRACE_WRITE_FI_WRITEMSG);
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_REQ_QUEUED, i, op,
+                TRACE_WRITE_UGNI_SENT);
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_APP_RETURN, i, op,
+                TRACE_WRITE_REQ_QUEUED);
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_CQE_RECVD, i, op,
+                TRACE_WRITE_UGNI_SENT);
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_B_ADD_EVENT, i, op,
+                TRACE_WRITE_CQE_RECVD);
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_A_EVT_QUEUED, i, op,
+                TRACE_WRITE_B_ADD_EVENT);
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_A_OBJ_SIGNAL, i, op,
+                TRACE_WRITE_A_EVT_QUEUED);
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_UGNI_EXIT, i, op,
+                TRACE_WRITE_A_OBJ_SIGNAL);
+            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_APP_REENTRY, i, op,
+                TRACE_WRITE_A_OBJ_SIGNAL);
+        }
+    }
+}
+
 
 void
 gnix_print_trace_buffers()
 {
     int op;
+
+    set_start_timestamps();
 
     for (op = 0; op < TRACE_SEND_OP_MAX; op++) {
         gnix_print_trace_flow_abs(&send_attr, op);

@@ -324,8 +324,13 @@ set_trace_value(time_delta_t *matrix, uint32_t max_points, uint32_t point,
     uint32_t offset = (max_points * iteration) + point;
 
     if (start) {
+        assert (matrix[offset].start == 0);
         matrix[offset].start = value;
     } else {
+        if (iteration > 0) {
+            assert(matrix[0].end != 0);
+        }
+        assert (matrix[offset].end == 0);
         matrix[offset].end = value;
     }
 }
@@ -357,6 +362,7 @@ extern uint32_t trace_send_count[TRACE_SEND_OP_MAX];
     if (op < TRACE_SEND_OP_MAX && id < trace_send_count[op]) {                 \
         uint64_t value2 = get_trace_value(trace_send_array[op],                \
             TRACE_SEND_POINT_MAX, point2, id, false);                          \
+        assert(value2 != 0);                                                   \
         set_trace_value(trace_send_array[op],                                  \
             TRACE_SEND_POINT_MAX, point, id, true, value2);                    \
     }
@@ -409,6 +415,7 @@ extern uint32_t trace_recv_count[TRACE_RECV_OP_MAX];
     if (op < TRACE_RECV_OP_MAX && id < trace_recv_count[op]) {                 \
         uint64_t value2 = get_trace_value(trace_recv_array[op],                \
             TRACE_RECV_POINT_MAX, point2, id, false);                          \
+        assert(value2 != 0);                                                   \
         set_trace_value(trace_recv_array[op],                                  \
             TRACE_RECV_POINT_MAX, point, id, true, value2);                    \
     }
@@ -454,6 +461,14 @@ typedef enum {
     TRACE_READ_POINT_MAX
 } trace_read_points_t; 
 
+// krehm: this should be 2, as sometimes the read extent spans two journals.
+// The problem is that then the op==1 file only has one or two rows in it.
+// Sometimes row 0 is unfilled, and so the entire file is skipped.  Other times
+// row 0 is filled and others are unfilled, causing the
+// TRACE_READ_SET_START_POINT() macro to abort on the unfilled entries.
+// I need to figure out how to handle this op==1 file that might only have
+// one or two rows in it.  By setting TRACE_READ_OP_MAX to 1, the second file
+// is never filled in, leading to a few misleading rows in the first file.
 #define TRACE_READ_OP_MAX 1         // max # of read operations per flow
 
 extern time_delta_t *trace_read_array[TRACE_READ_OP_MAX];
@@ -463,6 +478,7 @@ extern uint32_t trace_read_count[TRACE_READ_OP_MAX];
     if (op < TRACE_READ_OP_MAX && id < trace_read_count[op]) {                 \
         uint64_t value2 = get_trace_value(trace_read_array[op],                \
             TRACE_READ_POINT_MAX, point2, id, false);                          \
+        assert(value2 != 0);                                                   \
         set_trace_value(trace_read_array[op],                                  \
             TRACE_READ_POINT_MAX, point, id, true, value2);                    \
     }
@@ -517,6 +533,7 @@ extern uint32_t trace_write_count[TRACE_WRITE_OP_MAX];
     if (op < TRACE_WRITE_OP_MAX && id < trace_write_count[op]) {               \
         uint64_t value2 = get_trace_value(trace_write_array[op],               \
             TRACE_WRITE_POINT_MAX, point2, id, false);                         \
+        assert(value2 != 0);                                                   \
         set_trace_value(trace_write_array[op],                                 \
             TRACE_WRITE_POINT_MAX, point, id, true, value2);                   \
     }

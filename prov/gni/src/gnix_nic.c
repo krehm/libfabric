@@ -550,15 +550,9 @@ static void __nic_get_completed_txd(struct gnix_nic *nic,
 				   gni_desc);
 #ifdef  TIMESTAMP_INSTRUMENTATION
                 if (txd_p->req->type == GNIX_FAB_RQ_RDMA_READ) {
-                    TRACE_READ_SET_START_POINT(TRACE_READ_CQE_RECVD,
-                        txd_p->req->trace_id, txd_p->req->trace_op,
-                        TRACE_READ_UGNI_SENT);
                     TRACE_READ_SET_END(TRACE_READ_CQE_RECVD,
                         txd_p->req->trace_id, txd_p->req->trace_op);
                 } else {
-                    TRACE_WRITE_SET_START_POINT(TRACE_WRITE_CQE_RECVD,
-                        txd_p->req->trace_id, txd_p->req->trace_op,
-                        TRACE_WRITE_UGNI_SENT);
                     TRACE_WRITE_SET_END(TRACE_WRITE_CQE_RECVD,
                         txd_p->req->trace_id, txd_p->req->trace_op);
                 }
@@ -567,9 +561,7 @@ static void __nic_get_completed_txd(struct gnix_nic *nic,
 		msg_id = GNI_CQ_GET_MSG_ID(cqe);
 		txd_p = __desc_lkup_by_id(nic, msg_id);
 #ifdef  TIMESTAMP_INSTRUMENTATION
-                TRACE_SEND_SET_START_POINT(TRACE_SEND_CQE_RECVD,
-                        txd_p->req->trace_id, txd_p->req->trace_op,
-                        TRACE_SEND_UGNI_SENT);
+                GNIX_ERR(FI_LOG_EP_DATA, "__nic_get_completed_txd(trace_id = %ld\n", txd_p->req->trace_id, txd_p->req->trace_op);
                 TRACE_SEND_SET_END(TRACE_SEND_CQE_RECVD, txd_p->req->trace_id,
                         txd_p->req->trace_op);
 #endif
@@ -623,21 +615,20 @@ static int __nic_tx_progress(struct gnix_nic *nic, gni_cq_handle_t cq)
 					  "TXD completer failed: %d", ret);
 			}
 #ifdef  TIMESTAMP_INSTRUMENTATION
+                        GNIX_ERR(FI_LOG_EP_DATA, "__nic_tx_progress(TRACE_READ_UGNI_EXIT) trace_id = %ld\n", trace_id, trace_op);
                         if (txd->req->type == GNIX_FAB_RQ_RDMA_READ) {
-                            TRACE_READ_SET_START_POINT(TRACE_READ_UGNI_EXIT,
-                                trace_id, trace_op, TRACE_READ_A_OBJ_SIGNAL);
                             TRACE_READ_SET_END(TRACE_READ_UGNI_EXIT,
                                 trace_id, trace_op);
                         } else if (txd->req->type == GNIX_FAB_RQ_RDMA_WRITE) {
-                            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_UGNI_EXIT,
-                                trace_id, trace_op, TRACE_WRITE_A_OBJ_SIGNAL);
                             TRACE_WRITE_SET_END(TRACE_WRITE_UGNI_EXIT,
                                 trace_id, trace_op);
-                        } else {
-                            TRACE_SEND_SET_START_POINT(TRACE_SEND_UGNI_EXIT,
-                                trace_id, trace_op, TRACE_SEND_A_OBJ_SIGNAL);
+                        } else if (txd->req->type == GNIX_FAB_RQ_SEND) {
                             TRACE_SEND_SET_END(TRACE_SEND_UGNI_EXIT,
                                 trace_id, trace_op);
+                        } else {
+                            GNIX_ERR(FI_LOG_EP_DATA,
+                                "unexpected: txd->req->type == %d\n",
+                                txd->req->type);
                         }
 #endif
 		}

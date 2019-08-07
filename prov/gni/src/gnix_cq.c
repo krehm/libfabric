@@ -311,22 +311,16 @@ ssize_t _gnix_cq_add_event(struct gnix_fid_cq *cq, struct gnix_fid_ep *ep,
 	_gnix_queue_enqueue(cq->events, &event->item);
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
-        GNIX_ERR(FI_LOG_EP_DATA, "flags = 0x%x\n", flags);
+        GNIX_ERR(FI_LOG_EP_DATA, "_gnix_cq_add_event(TRACE_READ_A_EVT_QUEUED) flags = 0x%x, traceid = %ld, trace_op = %d\n", flags, trace_id, trace_op);
         if ((flags & FI_READ) != 0) {
-            TRACE_READ_SET_START_POINT(TRACE_READ_A_EVT_QUEUED, trace_id,
-                trace_op, TRACE_READ_B_ADD_EVENT);
             TRACE_READ_SET_END(TRACE_READ_A_EVT_QUEUED, trace_id, trace_op);
         } else if ((flags & FI_WRITE) != 0) {
-            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_A_EVT_QUEUED, trace_id,
-                trace_op, TRACE_WRITE_B_ADD_EVENT);
             TRACE_WRITE_SET_END(TRACE_WRITE_A_EVT_QUEUED, trace_id, trace_op);
         } else if ((flags & FI_SEND) != 0) {
-            TRACE_SEND_SET_START_POINT(TRACE_SEND_A_EVT_QUEUED, trace_id,
-                trace_op, TRACE_SEND_B_ADD_EVENT);
             TRACE_SEND_SET_END(TRACE_SEND_A_EVT_QUEUED, trace_id, trace_op);
+        } else if (flags == FI_MULTI_RECV) {
+            /* Skip this, it is just announcing a full multi-recv buffer. */
         } else {
-            TRACE_RECV_SET_START_POINT(TRACE_RECV_A_EVT_QUEUED, trace_id,
-                trace_op, TRACE_RECV_A_MEMCPY);
             TRACE_RECV_SET_END(TRACE_RECV_A_EVT_QUEUED, trace_id, trace_op);
         }
 #endif
@@ -335,25 +329,19 @@ ssize_t _gnix_cq_add_event(struct gnix_fid_cq *cq, struct gnix_fid_ep *ep,
 	if (cq->wait) {
 		_gnix_signal_wait_obj(cq->wait);
 #ifdef  TIMESTAMP_INSTRUMENTATION
-                GNIX_ERR(FI_LOG_EP_DATA, "flags = 0x%x\n", flags);
+                GNIX_ERR(FI_LOG_EP_DATA, "_gnix_cq_add_event(TRACE_READ_A_OBJ_SIGNAL) flags = 0x%x, traceid = %ld, trace_op = %d\n", flags, trace_id, trace_op);
                 if ((flags & FI_READ) != 0) {
-                    TRACE_READ_SET_START_POINT(TRACE_READ_A_OBJ_SIGNAL,
-                        trace_id, trace_op, TRACE_READ_A_EVT_QUEUED);
                     TRACE_READ_SET_END(TRACE_READ_A_OBJ_SIGNAL, trace_id,
                             trace_op);
                 } else if ((flags & FI_WRITE) != 0) {
-                    TRACE_WRITE_SET_START_POINT(TRACE_WRITE_A_OBJ_SIGNAL,
-                        trace_id, trace_op, TRACE_WRITE_A_EVT_QUEUED);
                     TRACE_WRITE_SET_END(TRACE_WRITE_A_OBJ_SIGNAL, trace_id,
                             trace_op);
                 } else if ((flags & FI_SEND) != 0) {
-                    TRACE_SEND_SET_START_POINT(TRACE_SEND_A_OBJ_SIGNAL,
-                        trace_id, trace_op, TRACE_SEND_A_EVT_QUEUED);
                     TRACE_SEND_SET_END(TRACE_SEND_A_OBJ_SIGNAL, trace_id,
                         trace_op);
+                } else if (flags == FI_MULTI_RECV) {
+                    /* Skip this, it is just announcing a full multi-recv buffer. */
                 } else {
-                    TRACE_RECV_SET_START_POINT(TRACE_RECV_A_OBJ_SIGNAL,
-                        trace_id, trace_op, TRACE_RECV_A_EVT_QUEUED);
                     TRACE_RECV_SET_END(TRACE_RECV_A_OBJ_SIGNAL, trace_id,
                         trace_op);
                 }
@@ -530,29 +518,19 @@ static ssize_t __gnix_cq_readfrom(struct fid_cq *cq, void *buf,
 		buf = (void *) ((uint8_t *) buf + cq_priv->entry_size);
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
-                GNIX_ERR(FI_LOG_EP_DATA, "event->flags = 0x%x\n", event->flags);
+                GNIX_ERR(FI_LOG_EP_DATA, "__gnix_cq_readfrom(TRACE_READ_APP_REENTRY) event->flags = 0x%x, trace_id = %ld\n", event->flags, event->trace_id, event->trace_op);
                 if ((event->flags & FI_READ) != 0) {
-                    TRACE_READ_SET_START_POINT(TRACE_READ_APP_REENTRY,
-                        event->trace_id, event->trace_op,
-                        TRACE_READ_A_OBJ_SIGNAL);
                     TRACE_READ_SET_END(TRACE_READ_APP_REENTRY,
                         event->trace_id, event->trace_op);
                 } else if ((event->flags & FI_WRITE) != 0) {
-                    TRACE_WRITE_SET_START_POINT(TRACE_WRITE_APP_REENTRY,
-                        event->trace_id, event->trace_op,
-                        TRACE_WRITE_A_OBJ_SIGNAL);
                     TRACE_WRITE_SET_END(TRACE_WRITE_APP_REENTRY,
                         event->trace_id, event->trace_op);
                 } else if ((event->flags & FI_SEND) != 0) {
-                    TRACE_SEND_SET_START_POINT(TRACE_SEND_APP_REENTRY,
-                        event->trace_id, event->trace_op,
-                        TRACE_SEND_A_OBJ_SIGNAL);
                     TRACE_SEND_SET_END(TRACE_SEND_APP_REENTRY,
                         event->trace_id, event->trace_op);
+                } else if (event->flags == FI_MULTI_RECV) {
+                    /* Skip this, it is just announcing a full multi-recv buffer. */
                 } else {
-                    TRACE_RECV_SET_START_POINT(TRACE_RECV_APP_REENTRY,
-                        event->trace_id, event->trace_op, 
-                        TRACE_RECV_A_OBJ_SIGNAL);
                     TRACE_RECV_SET_END(TRACE_RECV_APP_REENTRY,
                         event->trace_id, event->trace_op);
                 }

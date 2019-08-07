@@ -254,6 +254,10 @@ struct gnix_smsg_eager_hdr {
 struct gnix_smsg_rndzv_start_hdr {
 	uint64_t flags;
 	uint64_t imm;
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        uint32_t trace_id;
+        uint32_t trace_op;
+#endif
 	uint64_t msg_tag;
 	gni_mem_handle_t mdh;
 	uint64_t addr;
@@ -281,6 +285,10 @@ struct gnix_smsg_rndzv_start_hdr {
 struct gnix_smsg_rndzv_iov_start_hdr {
 	uint64_t flags;
 	uint64_t imm;
+#ifdef  TIMESTAMP_INSTRUMENTATION
+        uint32_t trace_id;
+        uint32_t trace_op;
+#endif
 	uint64_t msg_tag;
 	uint64_t req_addr;
 	size_t   iov_cnt;

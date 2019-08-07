@@ -627,8 +627,7 @@ static int __gnix_msg_send_completion(struct gnix_fid_ep *ep,
 
 	if ((req->msg.send_flags & FI_COMPLETION) && ep->send_cq) {
 #ifdef  TIMESTAMP_INSTRUMENTATION
-                TRACE_SEND_SET_START_POINT(TRACE_SEND_B_ADD_EVENT,
-                        req->trace_id, req->trace_op, TRACE_SEND_CQE_RECVD);
+                GNIX_ERR(FI_LOG_EP_DATA, "__gnix_msg_send_completion(trace_id = %ld\n", req->trace_id, req->trace_op);
                 TRACE_SEND_SET_END(TRACE_SEND_B_ADD_EVENT, req->trace_id,
                         req->trace_op);
 #endif
@@ -1845,12 +1844,6 @@ static int __comp_eager_msg_w_data(void *data, gni_return_t tx_status)
 			GNIX_WARN(FI_LOG_EP_DATA,
 				  "__gnix_msg_send_completion() failed: %d\n",
 				  ret);
-#ifdef  TIMESTAMP_INSTRUMENTATION
-                TRACE_SEND_SET_START_POINT(TRACE_SEND_UGNI_EXIT, req->trace_id,
-                        req->trace_op, TRACE_SEND_A_OBJ_SIGNAL);
-                TRACE_SEND_SET_END(TRACE_SEND_UGNI_EXIT, req->trace_id,
-                        req->trace_op);
-#endif
 	}
 
 	__gnix_msg_send_fr_complete(req, tdesc);
@@ -2060,9 +2053,6 @@ static int __smsg_eager_msg_w_data(void *data, void *msg)
 #ifdef  TIMESTAMP_INSTRUMENTATION
         uint64_t tstamp = get_nanosecs();
 
-        TRACE_RECV_SET_START_TIME(TRACE_RECV_SMSG_ENTRY, hdr->trace_id,
-            hdr->trace_op, tstamp);
-        // krehm: bit of a kludge, to save creating another macro
         TRACE_RECV_SET_END_TIME(TRACE_RECV_SMSG_ENTRY, hdr->trace_id,
             hdr->trace_op, tstamp);
 #endif
@@ -2074,8 +2064,6 @@ static int __smsg_eager_msg_w_data(void *data, void *msg)
 	req = _gnix_match_tag(posted_queue, hdr->msg_tag, 0, FI_PEEK, NULL,
 			      &vc->peer_addr);
 #ifdef  TIMESTAMP_INSTRUMENTATION
-        TRACE_RECV_SET_START_POINT(TRACE_RECV_A_MATCH_TAG, hdr->trace_id,
-            hdr->trace_op, TRACE_RECV_SMSG_ENTRY);
         TRACE_RECV_SET_END(TRACE_RECV_A_MATCH_TAG, hdr->trace_id, hdr->trace_op);
 #endif
 	if (req) {
@@ -2106,15 +2094,11 @@ static int __smsg_eager_msg_w_data(void *data, void *msg)
 			   req->msg.cum_send_len);
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
-                TRACE_RECV_SET_START_POINT(TRACE_RECV_B_MEMCPY, hdr->trace_id,
-                    hdr->trace_op, TRACE_RECV_A_MATCH_TAG);
                 TRACE_RECV_SET_END(TRACE_RECV_B_MEMCPY, hdr->trace_id,
                         hdr->trace_op);
 #endif
 		__gnix_msg_copy_data_to_recv_addr(req, data_ptr);
 #ifdef  TIMESTAMP_INSTRUMENTATION
-                TRACE_RECV_SET_START_POINT(TRACE_RECV_A_MEMCPY, hdr->trace_id,
-                    hdr->trace_op, TRACE_RECV_B_MEMCPY);
                 TRACE_RECV_SET_END(TRACE_RECV_A_MEMCPY, hdr->trace_id,
                         hdr->trace_op);
 #endif
@@ -2177,8 +2161,6 @@ static int __smsg_eager_msg_w_data(void *data, void *msg)
 	}
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
-        TRACE_RECV_SET_START_POINT(TRACE_RECV_UGNI_EXIT, hdr->trace_id,
-            hdr->trace_op, TRACE_RECV_A_OBJ_SIGNAL);
         TRACE_RECV_SET_END(TRACE_RECV_UGNI_EXIT, hdr->trace_id, hdr->trace_op);
 #endif
 
@@ -2294,6 +2276,10 @@ static int __smsg_rndzv_start(void *data, void *msg)
 		req->msg.send_flags = hdr->flags;
 		req->msg.tag = hdr->msg_tag;
 		req->msg.imm = hdr->imm;
+#ifdef  TIMESTAMP_INSTRUMENTATION
+		req->trace_id = hdr->trace_id;
+		req->trace_op = hdr->trace_op;
+#endif
 		req->msg.rma_mdh = hdr->mdh;
 		req->msg.rma_id = hdr->req_addr;
 		req->msg.send_info[0].head = hdr->head;
@@ -3072,11 +3058,6 @@ static int _gnix_send_req(void *arg)
 	nic = ep->nic;
 	assert(nic != NULL);
 
-#ifdef  TIMESTAMP_INSTRUMENTATION
-        uint32_t trace_id = GNIX_NO_TRACE;  // krehm: fix this
-        uint32_t trace_op = GNIX_NO_OP;
-#endif
-
 	rc = _gnix_nic_tx_alloc(nic, &tdesc);
 	if (rc != FI_SUCCESS) {
 		GNIX_DEBUG(FI_LOG_EP_DATA, "_gnix_nic_tx_alloc() failed: %d\n",
@@ -3094,6 +3075,10 @@ static int _gnix_send_req(void *arg)
 			tag = GNIX_SMSG_T_RNDZV_START;
 			tdesc->rndzv_start_hdr.flags = req->msg.send_flags;
 			tdesc->rndzv_start_hdr.imm = req->msg.imm;
+#ifdef  TIMESTAMP_INSTRUMENTATION
+		        tdesc->rndzv_start_hdr.trace_id = req->trace_id;
+		        tdesc->rndzv_start_hdr.trace_op = req->trace_op;
+#endif
 			tdesc->rndzv_start_hdr.msg_tag = req->msg.tag;
 			tdesc->rndzv_start_hdr.mdh = req->msg.send_info[0].mem_hndl;
 			tdesc->rndzv_start_hdr.addr = req->msg.send_info[0].send_addr;
@@ -3142,6 +3127,10 @@ static int _gnix_send_req(void *arg)
 			tag = GNIX_SMSG_T_RNDZV_IOV_START;
 			tdesc->rndzv_iov_start_hdr.flags = req->msg.send_flags;
 			tdesc->rndzv_iov_start_hdr.imm = req->msg.imm;
+#ifdef  TIMESTAMP_INSTRUMENTATION
+		        tdesc->rndzv_iov_start_hdr.trace_id = req->trace_id;
+		        tdesc->rndzv_iov_start_hdr.trace_op = req->trace_op;
+#endif
 			tdesc->rndzv_iov_start_hdr.msg_tag = req->msg.tag;
 			tdesc->rndzv_iov_start_hdr.iov_cnt =
 				req->msg.send_iov_cnt;
@@ -3197,11 +3186,6 @@ static int _gnix_send_req(void *arg)
 		/* If this is not rndzv the send length should always be the
 		 * cumulative length of all the send_info lengths */
 		data_len = req->msg.cum_send_len;
-
-#ifdef  TIMESTAMP_INSTRUMENTATION
-                trace_id = req->trace_id;
-                trace_op = req->trace_op;
-#endif
 	}
 	tdesc->req = req;
 	tdesc->completer_fn = gnix_ep_smsg_completers[tag];
@@ -3242,9 +3226,8 @@ static int _gnix_send_req(void *arg)
 	}
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
-        TRACE_SEND_SET_START_POINT(TRACE_SEND_UGNI_SENT, trace_id, trace_op,
-                TRACE_SEND_FI_SENDMSG);
-        TRACE_SEND_SET_END(TRACE_SEND_UGNI_SENT, trace_id, trace_op);
+        GNIX_ERR(FI_LOG_EP_DATA, "_gnix_send_req(TRACE_SEND_UGNI_SENT) trace_id = %ld, trace_op = %ld\n", req->trace_id, req->trace_op);
+        TRACE_SEND_SET_END(TRACE_SEND_UGNI_SENT, req->trace_id, req->trace_op);
 #endif
 	return gnixu_to_fi_errno(status);
 }
@@ -3325,9 +3308,7 @@ ssize_t _gnix_send(struct gnix_fid_ep *ep, uint64_t loc_addr, size_t len,
 #ifdef  TIMESTAMP_INSTRUMENTATION
         req->trace_id = trace_id;
         req->trace_op = trace_op;
-        TRACE_SEND_SET_START_TIME(TRACE_SEND_FI_SENDMSG, req->trace_id,
-                req->trace_op, tstamp);
-        // krehm: bit of a kludge, to save creating another macro
+        GNIX_ERR(FI_LOG_EP_DATA, "_gnix_send(TRACE_SEND_FI_SENDMSG) trace_id = %ld, trace_op = %ld, timestamp = %ld\n", trace_id, trace_op, tstamp);
         TRACE_SEND_SET_END_TIME(TRACE_SEND_FI_SENDMSG, req->trace_id,
                 req->trace_op, tstamp);
 #endif
@@ -3399,8 +3380,7 @@ ssize_t _gnix_send(struct gnix_fid_ep *ep, uint64_t loc_addr, size_t len,
 	COND_RELEASE(ep->requires_lock, &ep->vc_lock);
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
-        TRACE_SEND_SET_START_POINT(TRACE_SEND_REQ_QUEUED, req->trace_id,
-                req->trace_op, TRACE_SEND_UGNI_SENT);
+        GNIX_ERR(FI_LOG_EP_DATA, "_gnix_send(TRACE_SEND_REQ_QUEUED) trace_id = %ld, trace_op = %ld\n", req->trace_id, req->trace_op);
         TRACE_SEND_SET_END(TRACE_SEND_REQ_QUEUED, req->trace_id, req->trace_op);
 #endif
 	/*
@@ -3415,8 +3395,7 @@ ssize_t _gnix_send(struct gnix_fid_ep *ep, uint64_t loc_addr, size_t len,
 	}
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
-        TRACE_SEND_SET_START_POINT(TRACE_SEND_APP_RETURN, req->trace_id,
-                req->trace_op, TRACE_SEND_REQ_QUEUED);
+        GNIX_ERR(FI_LOG_EP_DATA, "_gnix_send(TRACE_SEND_APP_RETURN) trace_id = %ld, trace_op = %ld\n", req->trace_id, req->trace_op);
         TRACE_SEND_SET_END(TRACE_SEND_APP_RETURN, req->trace_id, req->trace_op);
 #endif
 

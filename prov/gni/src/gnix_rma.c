@@ -105,13 +105,9 @@ static int __gnix_rma_send_completion(struct gnix_fid_ep *ep,
 	if ((req->flags & FI_COMPLETION) && ep->send_cq) {
 #ifdef  TIMESTAMP_INSTRUMENTATION
                 if (req->type == GNIX_FAB_RQ_RDMA_READ) {
-                    TRACE_READ_SET_START_POINT(TRACE_READ_B_ADD_EVENT,
-                        req->trace_id, req->trace_op, TRACE_READ_CQE_RECVD);
                     TRACE_READ_SET_END(TRACE_READ_B_ADD_EVENT, req->trace_id,
                         req->trace_op);
                 } else if (req->type == GNIX_FAB_RQ_RDMA_WRITE) {
-                    TRACE_WRITE_SET_START_POINT(TRACE_WRITE_B_ADD_EVENT,
-                        req->trace_id, req->trace_op, TRACE_WRITE_CQE_RECVD);
                     TRACE_WRITE_SET_END(TRACE_WRITE_B_ADD_EVENT, req->trace_id,
                         req->trace_op);
                 }
@@ -1326,13 +1322,9 @@ int _gnix_rma_post_req(void *data)
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
         if (fab_req->type == GNIX_FAB_RQ_RDMA_READ) {
-            TRACE_READ_SET_START_POINT(TRACE_READ_UGNI_SENT,
-                fab_req->trace_id, fab_req->trace_op, TRACE_READ_FI_READMSG);
             TRACE_READ_SET_END(TRACE_READ_UGNI_SENT, fab_req->trace_id,
                 fab_req->trace_op);
         } else {
-            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_UGNI_SENT,
-                fab_req->trace_id, fab_req->trace_op, TRACE_WRITE_FI_WRITEMSG);
             TRACE_WRITE_SET_END(TRACE_WRITE_UGNI_SENT, fab_req->trace_id,
                 fab_req->trace_op);
         }
@@ -1432,15 +1424,9 @@ ssize_t _gnix_rma(struct gnix_fid_ep *ep, enum gnix_fab_req_type fr_type,
         req->trace_id = trace_id;
         req->trace_op = trace_op;
         if (fr_type == GNIX_FAB_RQ_RDMA_READ) {
-            TRACE_READ_SET_START_TIME(TRACE_READ_FI_READMSG, req->trace_id,
-                req->trace_op, tstamp);
-            // krehm: bit of a kludge, to save creating another macro
             TRACE_READ_SET_END_TIME(TRACE_READ_FI_READMSG, req->trace_id,
                     req->trace_op, tstamp);
         } else {
-            TRACE_WRITE_SET_START_TIME(TRACE_WRITE_FI_WRITEMSG,
-                req->trace_id, req->trace_op, tstamp);
-            // krehm: bit of a kludge, to save creating another macro
             TRACE_WRITE_SET_END_TIME(TRACE_WRITE_FI_WRITEMSG, req->trace_id,
                     req->trace_op, tstamp);
         }
@@ -1626,13 +1612,9 @@ ssize_t _gnix_rma(struct gnix_fid_ep *ep, enum gnix_fab_req_type fr_type,
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
         if (fr_type == GNIX_FAB_RQ_RDMA_READ) {
-            TRACE_READ_SET_START_POINT(TRACE_READ_REQ_QUEUED, req->trace_id,
-                req->trace_op, TRACE_READ_UGNI_SENT);
             TRACE_READ_SET_END(TRACE_READ_REQ_QUEUED, req->trace_id,
                 req->trace_op);
         } else {
-            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_REQ_QUEUED, req->trace_id,
-                req->trace_op, TRACE_WRITE_UGNI_SENT);
             TRACE_WRITE_SET_END(TRACE_WRITE_REQ_QUEUED, req->trace_id,
                 req->trace_op);
         }
@@ -1650,13 +1632,9 @@ ssize_t _gnix_rma(struct gnix_fid_ep *ep, enum gnix_fab_req_type fr_type,
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
         if (fr_type == GNIX_FAB_RQ_RDMA_READ) {
-            TRACE_READ_SET_START_POINT(TRACE_READ_APP_RETURN, req->trace_id,
-                req->trace_op, TRACE_READ_REQ_QUEUED);
             TRACE_READ_SET_END(TRACE_READ_APP_RETURN, req->trace_id,
                     req->trace_op);
         } else {
-            TRACE_WRITE_SET_START_POINT(TRACE_WRITE_APP_RETURN, req->trace_id,
-                req->trace_op, TRACE_WRITE_REQ_QUEUED);
             TRACE_WRITE_SET_END(TRACE_WRITE_APP_RETURN, req->trace_id,
                     req->trace_op);
         }
