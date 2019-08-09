@@ -803,8 +803,8 @@ int _gnix_get_num_corespec_cpus(uint32_t *num_core_spec_cpus)
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
 
-static const char *test_name_fragment;
-static const char *set_name_fragment;
+static char test_name_fragment[64];
+static char set_name_fragment[64];
 
 time_delta_t *trace_send_array[TRACE_SEND_OP_MAX];
 uint32_t trace_send_count[TRACE_SEND_OP_MAX];
@@ -903,8 +903,8 @@ gnix_allocate_trace_buffers(const char *test_name, const char *set_name,
 
     gnix_deallocate_trace_buffers();
 
-    test_name_fragment = test_name;
-    set_name_fragment = set_name;
+    strcpy(test_name_fragment, test_name);
+    strcpy(set_name_fragment, set_name);
 
     /* Allocate space to collect data points for the desired number of
      * iterations.
@@ -942,8 +942,8 @@ gnix_deallocate_trace_buffers()
 {
     int op;
 
-    test_name_fragment = NULL;
-    set_name_fragment = NULL;
+    test_name_fragment[0] = '\0';
+    set_name_fragment[0] = '\0';
 
     /* Stop new attempts to store values to an existing point ID. */
 
@@ -1042,7 +1042,7 @@ gnix_print_trace_flow_abs(flow_attr_t *flow_attr, uint32_t op)
 {
     int     column_widths[flow_attr->max_points];
     char    pbuf[1024];
-    char    flow_name[128];
+    char    flow_name[256];
     FILE    *outf;
     char    *strptr;
     uint64_t value, time_base;
@@ -1177,7 +1177,7 @@ gnix_print_trace_flow_rel(flow_attr_t *flow_attr, uint32_t op)
     stat_array_t    stat_array[flow_attr->max_points];
     int     column_widths[flow_attr->max_points];
     char    pbuf[1024];
-    char    flow_name[128];
+    char    flow_name[256];
     FILE    *outf;
     char    *strptr;
     uint64_t value, time_base;
