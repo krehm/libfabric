@@ -311,7 +311,6 @@ ssize_t _gnix_cq_add_event(struct gnix_fid_cq *cq, struct gnix_fid_ep *ep,
 	_gnix_queue_enqueue(cq->events, &event->item);
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
-        GNIX_ERR(FI_LOG_EP_DATA, "_gnix_cq_add_event(TRACE_READ_A_EVT_QUEUED) flags = 0x%x, traceid = %ld, trace_op = %d\n", flags, trace_id, trace_op);
         if ((flags & FI_READ) != 0) {
             TRACE_READ_SET_END(TRACE_READ_A_EVT_QUEUED, trace_id, trace_op);
         } else if ((flags & FI_WRITE) != 0) {
@@ -329,7 +328,6 @@ ssize_t _gnix_cq_add_event(struct gnix_fid_cq *cq, struct gnix_fid_ep *ep,
 	if (cq->wait) {
 		_gnix_signal_wait_obj(cq->wait);
 #ifdef  TIMESTAMP_INSTRUMENTATION
-                GNIX_ERR(FI_LOG_EP_DATA, "_gnix_cq_add_event(TRACE_READ_A_OBJ_SIGNAL) flags = 0x%x, traceid = %ld, trace_op = %d\n", flags, trace_id, trace_op);
                 if ((flags & FI_READ) != 0) {
                     TRACE_READ_SET_END(TRACE_READ_A_OBJ_SIGNAL, trace_id,
                             trace_op);
@@ -518,7 +516,6 @@ static ssize_t __gnix_cq_readfrom(struct fid_cq *cq, void *buf,
 		buf = (void *) ((uint8_t *) buf + cq_priv->entry_size);
 
 #ifdef  TIMESTAMP_INSTRUMENTATION
-                GNIX_ERR(FI_LOG_EP_DATA, "__gnix_cq_readfrom(TRACE_READ_APP_REENTRY) event->flags = 0x%x, trace_id = %ld\n", event->flags, event->trace_id, event->trace_op);
                 if ((event->flags & FI_READ) != 0) {
                     TRACE_READ_SET_END(TRACE_READ_APP_REENTRY,
                         event->trace_id, event->trace_op);
